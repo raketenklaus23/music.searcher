@@ -148,3 +148,60 @@ def all_keys(notation: str = "camelot") -> list[str]:
     if notation == "openkey":
         return [f"{n}m" for n in range(1, 13)] + [f"{n}d" for n in range(1, 13)]
     return [f"{n}A" for n in range(1, 13)] + [f"{n}B" for n in range(1, 13)]
+
+
+# ---- Chromatische Reihenfolge -----------------------------------------
+# In musikalischer (chromatischer) Reihenfolge: Semiton für Semiton aufsteigend.
+# So bedeutet Nachbar in der Reihe genau 1 Halbton Pitch-Shift.
+
+_MINOR_CHROMATIC = [
+    ("Cm",  "5A"),
+    ("C#m", "12A"),
+    ("Dm",  "7A"),
+    ("Ebm", "2A"),
+    ("Em",  "9A"),
+    ("Fm",  "4A"),
+    ("F#m", "11A"),
+    ("Gm",  "6A"),
+    ("Abm", "1A"),
+    ("Am",  "8A"),
+    ("Bbm", "3A"),
+    ("Bm",  "10A"),
+]
+
+_MAJOR_CHROMATIC = [
+    ("C",  "8B"),
+    ("C#", "3B"),
+    ("D",  "10B"),
+    ("Eb", "5B"),
+    ("E",  "12B"),
+    ("F",  "7B"),
+    ("F#", "2B"),
+    ("G",  "9B"),
+    ("Ab", "4B"),
+    ("A",  "11B"),
+    ("Bb", "6B"),
+    ("B",  "1B"),
+]
+
+
+def keyrow_chromatic(notation: str = "camelot") -> dict:
+    """Zwei Reihen (Moll oben, Dur unten) chromatisch aufsteigend.
+
+    Rückgabeformat für QML:
+        {
+            "minor": [{"tonic": "Cm", "code": "5A"}, ...],
+            "major": [{"tonic": "C",  "code": "8B"}, ...],
+        }
+
+    'code' ist entweder Camelot ('5A') oder OpenKey ('4m') je nach notation.
+    'tonic' bleibt musikalischer Name (Cm / C#) — dient als Sekundärlabel.
+    """
+    def code_for(camelot: str) -> str:
+        if notation == "openkey":
+            return camelot_to_openkey(camelot) or camelot
+        return camelot
+
+    minor = [{"tonic": t, "code": code_for(c)} for t, c in _MINOR_CHROMATIC]
+    major = [{"tonic": t, "code": code_for(c)} for t, c in _MAJOR_CHROMATIC]
+    return {"minor": minor, "major": major}

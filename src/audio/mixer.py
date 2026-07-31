@@ -18,6 +18,7 @@ except Exception:
     _HAS_PEDALBOARD = False
 
 from .deck import Deck
+from .effects import ChannelFX, GlobalFilterParams, KillSection, OneKnobCompressor
 
 
 class CrossfadeCurve(str, Enum):
@@ -27,57 +28,110 @@ class CrossfadeCurve(str, Enum):
 
 
 class ChannelStrip:
-    """Ein Mixer-Kanal: 4-Band-EQ + Volume/Gain (Gain sitzt schon im Deck)."""
+    """Ein Mixer-Kanal: EQ (4-Band) → Kill (3-Band) → Compressor → FX → Volume.
 
-    # Frequenzen für 4-Band EQ (typisch für DJ-Mixer)
+    Volume (statt Line-Fader) und globaler Filter-Resonance werden von aussen
+    vom Mixer verwaltet.
+    """
+
     F_LOW = 100.0
     F_LOWMID = 400.0
     F_HIGHMID = 2500.0
     F_HIGH = 8000.0
 
-    def __init__(self, sr: int = 48000):
+    def __init__(self, sr: int, global_filter: GlobalFilterParams):
         self.sr = sr
         self._eq_low_db = 0.0
         self._eq_lowmid_db = 0.0
         self._eq_highmid_db = 0.0
         self._eq_high_db = 0.0
         if _HAS_PEDALBOARD:
-            self._chain = Pedalboard([
+            self._eq_chain = Pedalboard([
                 LowShelfFilter(cutoff_frequency_hz=self.F_LOW, gain_db=0.0, q=0.7),
                 PeakFilter(cutoff_frequency_hz=self.F_LOWMID, gain_db=0.0, q=1.0),
                 PeakFilter(cutoff_frequency_hz=self.F_HIGHMID, gain_db=0.0, q=1.0),
                 HighShelfFilter(cutoff_frequency_hz=self.F_HIGH, gain_db=0.0, q=0.7),
             ])
         else:
-            self._chain = None
+            self._eq_chain = None
+
+        self.kill = KillSection(sr)
+        self.compressor = OneKnobCompressor(sr)
+        self.fx = ChannelFX(sr, global_filter)
+        self._volume = 1.0    # Rotary-Volume 0..1 (1 = Unity)
+
+    # ---- EQ ----
 
     def set_low(self, db: float) -> None:
         self._eq_low_db = float(np.clip(db, -26.0, 12.0))
-        if self._chain is not None:
-            self._chain[0].gain_db = self._eq_low_db
+        if self._eq_chain is not None:
+            self._eq_chain[0].gain_db = self._eq_low_db
 
     def set_lowmid(self, db: float) -> None:
         self._eq_lowmid_db = float(np.clip(db, -26.0, 12.0))
-        if self._chain is not None:
-            self._chain[1].gain_db = self._eq_lowmid_db
+        if self._eq_chain is not None:
+            self._eq_chain[1].gain_db = self._eq_lowmid_db
 
     def set_highmid(self, db: float) -> None:
         self._eq_highmid_db = float(np.clip(db, -26.0, 12.0))
-        if self._chain is not None:
-            self._chain[2].gain_db = self._eq_highmid_db
+        if self._eq_chain is not None:
+            self._eq_chain[2].gain_db = self._eq_highmid_db
 
     def set_high(self, db: float) -> None:
         self._eq_high_db = float(np.clip(db, -26.0, 12.0))
-        if self._chain is not None:
-            self._chain[3].gain_db = self._eq_high_db
+        if self._eq_chain is not None:
+            self._eq_chain[3].gain_db = self._eq_high_db
+
+    # ---- Kill (3-Band bipolar) ----
+
+    def set_kill_low(self, v: float) -> None:
+        self.kill.low.set_value(v)
+
+    def set_kill_mid(self, v: float) -> None:
+        self.kill.mid.set_value(v)
+
+    def set_kill_high(self, v: float) -> None:
+        self.kill.high.set_value(v)
+
+    # ---- Compressor ----
+
+    def set_compressor(self, v: float) -> None:
+        self.compressor.set_value(v)
+
+    # ---- FX ----
+
+    def set_fx_type(self, t: str) -> None:
+        self.fx.set_type(t)
+
+    def set_fx_wet(self, v: float) -> None:
+        self.fx.set_wet(v)
+
+    def set_fx_filter_dir(self, d: float) -> None:
+        self.fx.set_filter_direction(d)
+
+    # ---- Volume (Rotary statt Fader) ----
+
+    def set_volume(self, v: float) -> None:
+        """0.0 = mute, 1.0 = Unity, bis 1.4 = +3 dB Headroom."""
+        self._volume = float(np.clip(v, 0.0, 1.4))
+
+    @property
+    def volume(self) -> float:
+        return self._volume
+
+    # ---- Signal-Chain ----
 
     def process(self, x: np.ndarray) -> np.ndarray:
-        if self._chain is None:
-            return x
-        # pedalboard erwartet float32 (samples, channels) und Samplerate
-        y = self._chain.process(x, self.sr, reset=False)
-        if y.dtype != np.float32:
-            y = y.astype(np.float32)
+        y = x
+        if self._eq_chain is not None:
+            y = self._eq_chain.process(y, self.sr, reset=False)
+            if y.dtype != np.float32:
+                y = y.astype(np.float32)
+        y = self.kill.process(y)
+        y = self.compressor.process(y)
+        y = self.fx.process(y)
+        if self._volume != 1.0:
+            y = y * np.float32(self._volume)
         return y
 
 
@@ -87,8 +141,9 @@ class Mixer:
     def __init__(self, deck_a: Deck, deck_b: Deck, sr: int = 48000):
         self.deck_a = deck_a
         self.deck_b = deck_b
-        self.strip_a = ChannelStrip(sr)
-        self.strip_b = ChannelStrip(sr)
+        self.global_filter = GlobalFilterParams()
+        self.strip_a = ChannelStrip(sr, self.global_filter)
+        self.strip_b = ChannelStrip(sr, self.global_filter)
         self.sr = sr
         self._xfader = 0.0     # -1.0 (nur A) .. +1.0 (nur B), 0 = Mitte
         self._curve = CrossfadeCurve.LINEAR
@@ -96,6 +151,13 @@ class Mixer:
         self._peak_l = 0.0
         self._peak_r = 0.0
         self._lock = threading.Lock()
+
+    def set_global_filter_resonance(self, v: float) -> None:
+        self.global_filter.resonance = float(np.clip(v, 0.0, 1.0))
+
+    @property
+    def global_filter_resonance(self) -> float:
+        return float(self.global_filter.resonance)
 
     # ---- Params -------------------------------------------------------
 

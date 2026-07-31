@@ -16,7 +16,13 @@ from PySide6.QtCore import (
 from ..audio.mixer import CrossfadeCurve
 from ..audio.player import Player
 from ..audio.sync import KeyMode, SnapMode, SyncMode
-from ..core.keys import all_keys, camelot_to_openkey, compatible_keys, format_key
+from ..core.keys import (
+    all_keys,
+    camelot_to_openkey,
+    compatible_keys,
+    format_key,
+    keyrow_chromatic,
+)
 from ..core.library import Library
 
 _DOUBLE_PRESS_WINDOW_S = 0.32   # innerhalb dieser Zeit gilt der 2. Klick als Double-Press
@@ -195,6 +201,41 @@ class DeckBridge(QObject):
     def setEqHigh(self, db: float) -> None:  # noqa: N802
         self._strip().set_high(db)
 
+    # ---- Kill / Compressor / FX (delegiert an Mixer.strip_*) --------
+
+    @Slot(float)
+    def setKillLow(self, v: float) -> None:  # noqa: N802
+        self._strip().set_kill_low(v)
+
+    @Slot(float)
+    def setKillMid(self, v: float) -> None:  # noqa: N802
+        self._strip().set_kill_mid(v)
+
+    @Slot(float)
+    def setKillHigh(self, v: float) -> None:  # noqa: N802
+        self._strip().set_kill_high(v)
+
+    @Slot(float)
+    def setCompressor(self, v: float) -> None:  # noqa: N802
+        self._strip().set_compressor(v)
+
+    @Slot(str)
+    def setFxType(self, t: str) -> None:  # noqa: N802
+        self._strip().set_fx_type(t)
+
+    @Slot(float)
+    def setFxWet(self, v: float) -> None:  # noqa: N802
+        self._strip().set_fx_wet(v)
+
+    @Slot(float)
+    def setFxFilterDir(self, d: float) -> None:  # noqa: N802
+        self._strip().set_fx_filter_dir(d)
+
+    @Slot(float)
+    def setChannelVolume(self, v: float) -> None:  # noqa: N802
+        """Rotary-Volume 0..1.4."""
+        self._strip().set_volume(v)
+
     def _strip(self):
         return self._player.mixer.strip_a if self._id == "a" else self._player.mixer.strip_b
 
@@ -334,6 +375,14 @@ class PlayerBridge(QObject):
     def setMasterGainDb(self, db: float) -> None:  # noqa: N802
         self._player.mixer.set_master_gain_db(db)
 
+    @Slot(float)
+    def setGlobalFilterResonance(self, v: float) -> None:  # noqa: N802
+        self._player.mixer.set_global_filter_resonance(v)
+
+    @Property(float, constant=False)
+    def globalFilterResonance(self) -> float:
+        return self._player.mixer.global_filter_resonance
+
     # ---- Sync / Master ------------------------------------------
 
     @Slot(str)
@@ -372,6 +421,11 @@ class PlayerBridge(QObject):
     @Slot(result=list)
     def keyRow(self) -> list:  # noqa: N802
         return all_keys(self._key_notation)
+
+    @Slot(result="QVariant")
+    def keyRowChromatic(self) -> dict:  # noqa: N802
+        """Zwei chromatische Reihen für die Key-Row: {'minor': [...], 'major': [...]}."""
+        return keyrow_chromatic(self._key_notation)
 
     @Slot(str, result=list)
     def compatibleKeys(self, camelot: str) -> list:  # noqa: N802

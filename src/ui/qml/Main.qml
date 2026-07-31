@@ -82,61 +82,100 @@ ApplicationWindow {
             }
         }
 
-        // === KEY-REIHE (immer sichtbar, aktueller Track hervorgehoben) ===
+        // === KEY-REIHE (chromatisch, 2 Reihen: Moll oben, Dur unten) ===
         Rectangle {
+            id: keyRowPanel
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
+            Layout.preferredHeight: 84
             color: root.bgPanel
             radius: 8
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.05)
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 6
+            // Datenmodell wird neu gebaut, wenn Notation togglet
+            property var keyData: {
+                backend.player.keyNotation  // dep trigger
+                return backend.player.keyRowChromatic()
+            }
 
-                Text {
-                    text: "KEYS"
-                    color: root.textDim
-                    font.pixelSize: 10
-                    font.letterSpacing: 2
+            // Aktuelle Deck-Keys — im aktiven Notations-Format (Camelot oder OpenKey)
+            property string deckACode: backend.player.deckA.musicalKey
+                ? backend.player.formatKey(backend.player.deckA.musicalKey)
+                : ""
+            property string deckBCode: backend.player.deckB.musicalKey
+                ? backend.player.formatKey(backend.player.deckB.musicalKey)
+                : ""
+
+            component KeyCell : Rectangle {
+                property var item: ({tonic: "", code: ""})
+                property bool isA: keyRowPanel.deckACode !== "" && keyRowPanel.deckACode === item.code
+                property bool isB: keyRowPanel.deckBCode !== "" && keyRowPanel.deckBCode === item.code
+                Layout.fillWidth: true
+                Layout.preferredHeight: 30
+                radius: 4
+                color: isA && isB ? "#ff2fbf"
+                     : isA ? "#00e0ff"
+                     : isB ? "#ffb020"
+                     : "#1c2534"
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.06)
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 1
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: item.tonic
+                        color: (isA || isB) ? "#0a0e14" : "#e6f1ff"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: item.code
+                        color: (isA || isB) ? "#0a0e14" : "#8899aa"
+                        font.pixelSize: 8
+                        font.letterSpacing: 1
+                    }
+                }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 4
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Text {
+                        text: "MOLL"
+                        color: root.neon
+                        font.pixelSize: 9
+                        font.letterSpacing: 2
+                        font.bold: true
+                        Layout.preferredWidth: 40
+                    }
+                    Repeater {
+                        model: keyRowPanel.keyData.minor
+                        KeyCell { item: modelData }
+                    }
                 }
 
-                Flow {
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 4
-
+                    spacing: 6
+                    Text {
+                        text: "DUR"
+                        color: root.neonAmber
+                        font.pixelSize: 9
+                        font.letterSpacing: 2
+                        font.bold: true
+                        Layout.preferredWidth: 40
+                    }
                     Repeater {
-                        // rebuilds when notation toggles
-                        model: {
-                            backend.player.keyNotation  // dep trigger
-                            return backend.player.keyRow()
-                        }
-                        Rectangle {
-                            width: 34; height: 22; radius: 4
-                            property string keyCode: modelData
-                            property bool isDeckAKey: backend.player.deckA.musicalKey === keyCode ||
-                                                      (backend.player.keyNotation === "openkey" &&
-                                                       backend.player.formatKey(backend.player.deckA.musicalKey) === keyCode)
-                            property bool isDeckBKey: backend.player.deckB.musicalKey === keyCode ||
-                                                      (backend.player.keyNotation === "openkey" &&
-                                                       backend.player.formatKey(backend.player.deckB.musicalKey) === keyCode)
-                            color: isDeckAKey && isDeckBKey ? "#ff2fbf"
-                                 : isDeckAKey ? "#00e0ff"
-                                 : isDeckBKey ? "#ffb020"
-                                 : "#1c2534"
-                            border.width: 1
-                            border.color: Qt.rgba(1, 1, 1, 0.06)
-                            Text {
-                                anchors.centerIn: parent
-                                text: keyCode
-                                color: (parent.isDeckAKey || parent.isDeckBKey) ? "#0a0e14" : "#8899aa"
-                                font.pixelSize: 10
-                                font.bold: (parent.isDeckAKey || parent.isDeckBKey)
-                            }
-                        }
+                        model: keyRowPanel.keyData.major
+                        KeyCell { item: modelData }
                     }
                 }
             }
@@ -159,7 +198,7 @@ ApplicationWindow {
             }
 
             Mixer {
-                Layout.preferredWidth: 260
+                Layout.preferredWidth: 340
                 Layout.fillHeight: true
             }
 

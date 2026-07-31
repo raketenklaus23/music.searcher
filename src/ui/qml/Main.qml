@@ -23,7 +23,6 @@ ApplicationWindow {
     property color text:      "#e6f1ff"
     property color textDim:   "#8899aa"
 
-    // --- Hintergrund: animierter Verlauf + subtiles Grid ---
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -65,6 +64,15 @@ ApplicationWindow {
                     font.letterSpacing: 2
                 }
                 Item { Layout.fillWidth: true }
+
+                // Notation-Toggle
+                Button {
+                    text: backend.player.keyNotation === "camelot" ? "Camelot" : "Open Key"
+                    onClicked: backend.actions.trigger("global.notation_toggle")
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Klick: Notation umschalten (Ctrl+K)"
+                }
+
                 Text {
                     id: statusText
                     text: "Ready."
@@ -74,63 +82,99 @@ ApplicationWindow {
             }
         }
 
-        // === DECK ZONE (oben) — Placeholder für Phase 2 ===
-        RowLayout {
+        // === KEY-REIHE (immer sichtbar, aktueller Track hervorgehoben) ===
+        Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 340
-            spacing: 10
+            Layout.preferredHeight: 40
+            color: root.bgPanel
+            radius: 8
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.05)
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: root.bgPanel
-                radius: 12
-                border.width: 1
-                border.color: Qt.rgba(0, 0.88, 1, 0.15)
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 6
+
                 Text {
-                    anchors.centerIn: parent
-                    text: "DECK A · kommt in Phase 2"
+                    text: "KEYS"
                     color: root.textDim
-                    font.pixelSize: 20
+                    font.pixelSize: 10
                     font.letterSpacing: 2
                 }
-            }
 
-            Rectangle {
-                Layout.preferredWidth: 240
-                Layout.fillHeight: true
-                color: root.bgPanel
-                radius: 12
-                border.width: 1
-                border.color: Qt.rgba(1, 0.184, 0.749, 0.15)
-                Text {
-                    anchors.centerIn: parent
-                    text: "MIXER"
-                    color: root.neonPink
-                    font.pixelSize: 18
-                    font.letterSpacing: 3
-                    font.bold: true
-                }
-            }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 4
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: root.bgPanel
-                radius: 12
-                border.width: 1
-                border.color: Qt.rgba(1, 0.69, 0.125, 0.15)
-                Text {
-                    anchors.centerIn: parent
-                    text: "DECK B · kommt in Phase 2"
-                    color: root.textDim
-                    font.pixelSize: 20
-                    font.letterSpacing: 2
+                    Repeater {
+                        // rebuilds when notation toggles
+                        model: {
+                            backend.player.keyNotation  // dep trigger
+                            return backend.player.keyRow()
+                        }
+                        Rectangle {
+                            width: 34; height: 22; radius: 4
+                            property string keyCode: modelData
+                            property bool isDeckAKey: backend.player.deckA.musicalKey === keyCode ||
+                                                      (backend.player.keyNotation === "openkey" &&
+                                                       backend.player.formatKey(backend.player.deckA.musicalKey) === keyCode)
+                            property bool isDeckBKey: backend.player.deckB.musicalKey === keyCode ||
+                                                      (backend.player.keyNotation === "openkey" &&
+                                                       backend.player.formatKey(backend.player.deckB.musicalKey) === keyCode)
+                            color: isDeckAKey && isDeckBKey ? "#ff2fbf"
+                                 : isDeckAKey ? "#00e0ff"
+                                 : isDeckBKey ? "#ffb020"
+                                 : "#1c2534"
+                            border.width: 1
+                            border.color: Qt.rgba(1, 1, 1, 0.06)
+                            Text {
+                                anchors.centerIn: parent
+                                text: keyCode
+                                color: (parent.isDeckAKey || parent.isDeckBKey) ? "#0a0e14" : "#8899aa"
+                                font.pixelSize: 10
+                                font.bold: (parent.isDeckAKey || parent.isDeckBKey)
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // === LIBRARY (unten) ===
+        // === DECK ZONE ===
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 360
+            spacing: 10
+
+            Deck {
+                id: deckA
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                deckModel: backend.player.deckA
+                deckId: "a"
+                sideLabel: "A"
+                neon: root.neon
+            }
+
+            Mixer {
+                Layout.preferredWidth: 260
+                Layout.fillHeight: true
+            }
+
+            Deck {
+                id: deckB
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                deckModel: backend.player.deckB
+                deckId: "b"
+                sideLabel: "B"
+                neon: root.neonAmber
+            }
+        }
+
+        // === LIBRARY ===
         LibraryPanel {
             id: libraryPanel
             Layout.fillWidth: true
@@ -154,15 +198,34 @@ ApplicationWindow {
                     color: root.textDim
                     font.pixelSize: 11
                 }
-                Item { Layout.fillWidth: true }
+                Item { width: 16 }
                 Text {
-                    text: "Phase 1 · Fundament"
-                    color: root.neon
+                    text: backend.player.engineRunning
+                          ? ("Engine: " + backend.player.currentDeviceLabel + " @ "
+                             + backend.player.currentSamplerate + " Hz / "
+                             + backend.player.currentBlocksize + " frames · "
+                             + backend.player.latencyMs.toFixed(1) + " ms")
+                          : "Engine: gestoppt"
+                    color: backend.player.engineRunning ? root.neon : root.textDim
+                    font.pixelSize: 11
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Audio-Einstellungen"
+                    onClicked: audioDialog.open()
+                }
+                Text {
+                    text: "Phase 2 · Decks + Mixer"
+                    color: root.neonPink
                     font.pixelSize: 11
                     font.letterSpacing: 2
                 }
             }
         }
+    }
+
+    AudioSettings {
+        id: audioDialog
     }
 
     Connections {

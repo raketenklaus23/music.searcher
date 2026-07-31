@@ -43,7 +43,6 @@ Dialog {
             radius: 6
             border.color: "#ffb020"
             border.width: 1
-            padding: 8
             Layout.preferredHeight: 44
             Text {
                 anchors.centerIn: parent

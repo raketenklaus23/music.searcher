@@ -309,6 +309,14 @@ class PlayerBridge(QObject):
     def deckB(self) -> DeckBridge:
         return self._deck_b
 
+    # ---- Deck-Registry (Python-side, für Action-Registry / Keyboard / MIDI) ----
+
+    def deckIds(self) -> list[str]:  # noqa: N802 — bewusst kein Slot, nur Python
+        return ["a", "b"]
+
+    def deckByIdInternal(self, deck_id: str) -> "DeckBridge":  # noqa: N802
+        return self._deck_a if deck_id == "a" else self._deck_b
+
     # ---- Mixer ---------------------------------------------------
 
     @Slot(float)
@@ -347,6 +355,11 @@ class PlayerBridge(QObject):
         if notation in ("camelot", "openkey"):
             self._key_notation = notation
             self.keyNotationChanged.emit()
+
+    @Slot()
+    def toggleKeyNotation(self) -> None:  # noqa: N802
+        self._key_notation = "openkey" if self._key_notation == "camelot" else "camelot"
+        self.keyNotationChanged.emit()
 
     @Property(str, notify=keyNotationChanged)
     def keyNotation(self) -> str:

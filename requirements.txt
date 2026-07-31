@@ -6,6 +6,7 @@ pyloudnorm>=0.1.1
 soundfile>=0.12.1
 mutagen>=1.47
 scipy>=1.13
+platformdirs>=4.0
 
 # === Phase 2: Playback (Decks + Mixer) ===
 sounddevice>=0.4.6

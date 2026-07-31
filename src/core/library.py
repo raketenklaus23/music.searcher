@@ -14,9 +14,18 @@ from typing import Iterable, Optional
 
 import mutagen
 
+try:
+    from platformdirs import user_data_dir
+    _APP_DATA = Path(user_data_dir("MusicSearcher", "MMM"))
+except ImportError:
+    # Fallback wenn platformdirs (noch) nicht installiert ist
+    _APP_DATA = Path(__file__).resolve().parents[2] / "data"
+
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "db" / "schema.sql"
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "library.db"
-DEFAULT_MUSIC_DIR = Path(__file__).resolve().parents[2] / "data" / "music"
+DEFAULT_DB_PATH = _APP_DATA / "library.db"
+DEFAULT_MUSIC_DIR = _APP_DATA / "music"
+DEFAULT_CACHE_DIR = _APP_DATA / "cache"
+DEFAULT_STEMS_DIR = _APP_DATA / "stems"
 
 SUPPORTED_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}
 

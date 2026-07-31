@@ -8,14 +8,17 @@ Rectangle {
     id: deck
     color: "#131a24"
     radius: 12
-    border.width: 1
-    border.color: Qt.rgba(1, 1, 1, 0.06)
+    border.width: deck.deckModel && deck.deckModel.isMaster ? 2 : 1
+    border.color: deck.deckModel && deck.deckModel.isMaster
+                  ? "#ff2fbf"
+                  : Qt.rgba(1, 1, 1, 0.06)
 
     property var  deckModel: null        // DeckBridge Instanz
     property color neon: "#00e0ff"
     property string sideLabel: "A"
+    property string deckId: "a"
 
-    // Beat-Pulse Animation — Rand-Glow synchron zum Beat
+    // --- Beat-Pulse Ring ---
     Rectangle {
         id: pulseRing
         anchors.fill: parent
@@ -33,7 +36,6 @@ Rectangle {
     Connections {
         target: deck.deckModel
         function onPositionChanged() {
-            // Trigger Pulse an jedem Beat (nur wenn spielend)
             if (deck.deckModel.isPlaying && deck.deckModel.beatInBar >= 1 && deck.deckModel.beatInBar !== deck._lastBeat) {
                 deck._lastBeat = deck.deckModel.beatInBar
                 pulseAnim.restart()
@@ -47,7 +49,7 @@ Rectangle {
         anchors.margins: 12
         spacing: 8
 
-        // Header: Side + Titel + BPM/Key
+        // === Header: Seite + Titel + BPM + Key ===
         RowLayout {
             Layout.fillWidth: true
             Text {
@@ -84,16 +86,20 @@ Rectangle {
                     font.pixelSize: 22
                     font.bold: true
                     horizontalAlignment: Text.AlignRight
+                    Layout.alignment: Qt.AlignRight
                 }
                 RowLayout {
                     spacing: 6
+                    Layout.alignment: Qt.AlignRight
                     Text {
                         text: (deck.deckModel && deck.deckModel.bpm > 0) ? "orig " + deck.deckModel.bpm.toFixed(1) : ""
                         color: "#556677"
                         font.pixelSize: 9
                     }
                     Text {
-                        text: (deck.deckModel && deck.deckModel.musicalKey) ? deck.deckModel.musicalKey : ""
+                        text: deck.deckModel && deck.deckModel.musicalKey
+                              ? backend.player.formatKey(deck.deckModel.musicalKey)
+                              : ""
                         color: "#ff2fbf"
                         font.pixelSize: 12
                         font.bold: true
@@ -102,7 +108,7 @@ Rectangle {
             }
         }
 
-        // Waveform-Placeholder (kommt in Phase 3 als Shader)
+        // === Waveform-Placeholder (Phase 3: Shader) ===
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 96
@@ -111,7 +117,6 @@ Rectangle {
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.05)
 
-            // Playhead-Position
             Rectangle {
                 visible: deck.deckModel && deck.deckModel.isLoaded
                 width: 2
@@ -132,7 +137,6 @@ Rectangle {
                 font.letterSpacing: 2
             }
 
-            // Drop-Zone: Track aus Library ziehen (interpretiert als text/plain track_id)
             DropArea {
                 anchors.fill: parent
                 keys: ["application/x-musicsearcher-trackid"]
@@ -142,7 +146,6 @@ Rectangle {
                 }
             }
 
-            // Klick zum Seek
             MouseArea {
                 anchors.fill: parent
                 onClicked: (m) => {
@@ -152,7 +155,7 @@ Rectangle {
             }
         }
 
-        // Transport-Buttons
+        // === Transport-Zeile ===
         RowLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -160,72 +163,116 @@ Rectangle {
             NeonButton {
                 text: "CUE"
                 neon: "#ffb020"
-                onClicked: deck.deckModel && deck.deckModel.cue()
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".cue")
             }
             NeonButton {
                 text: deck.deckModel && deck.deckModel.isPlaying ? "PAUSE" : "PLAY"
                 active: deck.deckModel && deck.deckModel.isPlaying
                 neon: deck.neon
-                onClicked: deck.deckModel && deck.deckModel.toggle()
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".play_pause")
             }
             NeonButton {
                 text: "SYNC"
                 neon: "#ff2fbf"
-                onClicked: deck.deckModel && backend.player.syncTo(deck.deckModel.deckId)
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".sync")
+                ToolTip.visible: hovered
+                ToolTip.text: "1x = BPM angleichen · 2x = Sync + Phrase-Lock"
             }
             NeonButton {
-                text: deck.deckModel && deck.deckModel.keyLock ? "KEYLOCK ✓" : "KEYLOCK"
+                text: deck.deckModel && deck.deckModel.keyLock ? "KEY ✓" : "KEY"
                 active: deck.deckModel && deck.deckModel.keyLock
                 neon: "#a78bfa"
-                onClicked: {
-                    if (deck.deckModel) deck.deckModel.setKeyLock(!deck.deckModel.keyLock)
-                }
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".keypress")
+                ToolTip.visible: hovered
+                ToolTip.text: "1x = KeyLock · 2x = Key-Match zu Master"
             }
+            NeonButton {
+                text: "MASTER"
+                active: deck.deckModel && deck.deckModel.isMaster
+                neon: "#ff2fbf"
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".become_master")
+            }
+
             Item { Layout.fillWidth: true }
-            Rectangle {
-                width: 12; height: 12; radius: 6
-                color: deck.deckModel && deck.deckModel.beatInBar === 1 ? "#ff2fbf" :
-                       deck.deckModel && deck.deckModel.beatInBar > 0    ? deck.neon : "#333"
-                opacity: deck.deckModel && deck.deckModel.beatInBar > 0 ? 1.0 : 0.3
-                Behavior on opacity { NumberAnimation { duration: 80 } }
-            }
-            Text {
-                text: deck.deckModel && deck.deckModel.beatInBar > 0
-                      ? deck.deckModel.beatInBar + " / 4"
-                      : "—"
-                color: "#c9d5e1"
-                font.pixelSize: 14
-                font.bold: true
-                Layout.preferredWidth: 40
-                horizontalAlignment: Text.AlignRight
+
+            // Beat-Indicator + phrasenweiser Countdown
+            ColumnLayout {
+                spacing: 2
+                RowLayout {
+                    spacing: 6
+                    Rectangle {
+                        width: 12; height: 12; radius: 6
+                        color: deck.deckModel && deck.deckModel.beatInBar === 1 ? "#ff2fbf" :
+                               deck.deckModel && deck.deckModel.beatInBar > 0    ? deck.neon : "#333"
+                        opacity: deck.deckModel && deck.deckModel.beatInBar > 0 ? 1.0 : 0.3
+                        Behavior on opacity { NumberAnimation { duration: 80 } }
+                    }
+                    Text {
+                        text: deck.deckModel && deck.deckModel.beatInBar > 0
+                              ? deck.deckModel.bar + "." + deck.deckModel.beatInBar
+                              : "—"
+                        color: "#c9d5e1"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+                }
+                // 16-Bar-Phrase-Balken
+                Row {
+                    spacing: 2
+                    Repeater {
+                        model: 16
+                        Rectangle {
+                            width: 6; height: 6; radius: 1
+                            color: deck.deckModel && (deck.deckModel.phraseBeat - 1) === index
+                                   ? "#ff2fbf" : Qt.rgba(1, 1, 1, 0.15)
+                        }
+                    }
+                }
             }
         }
 
-        // Tempo/Pitch-Fader
+        // === Beatgrid-Korrektur ===
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 70
-            spacing: 12
+            spacing: 6
+            Text {
+                text: "BEATGRID"
+                color: "#556677"
+                font.pixelSize: 10
+                font.letterSpacing: 2
+            }
+            NeonButton {
+                text: "BPM /2"
+                neon: "#8899aa"
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".bpm_halve")
+            }
+            NeonButton {
+                text: "BPM x2"
+                neon: "#8899aa"
+                onClicked: backend.actions.trigger("deck." + deck.deckId + ".bpm_double")
+            }
+            Item { Layout.fillWidth: true }
+        }
 
-            ColumnLayout {
+        // === Tempo-Fader ===
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            Text { text: "TEMPO"; color: "#8899aa"; font.pixelSize: 10; font.letterSpacing: 2 }
+            Slider {
                 Layout.fillWidth: true
-                spacing: 2
-                Text { text: "TEMPO"; color: "#8899aa"; font.pixelSize: 10; font.letterSpacing: 2 }
-                Slider {
-                    Layout.fillWidth: true
-                    from: -0.16     // -16%
-                    to: 0.16
-                    value: deck.deckModel ? (deck.deckModel.tempoRatio - 1.0) : 0.0
-                    onMoved: if (deck.deckModel) deck.deckModel.setTempoRatio(1.0 + value)
+                from: -0.16
+                to: 0.16
+                value: deck.deckModel ? (deck.deckModel.tempoRatio - 1.0) : 0.0
+                onMoved: if (deck.deckModel) deck.deckModel.setTempoRatio(1.0 + value)
+            }
+            Text {
+                text: {
+                    var v = deck.deckModel ? (deck.deckModel.tempoRatio - 1.0) * 100.0 : 0.0
+                    return (v >= 0 ? "+" : "") + v.toFixed(2) + " %"
                 }
-                Text {
-                    text: {
-                        var v = deck.deckModel ? (deck.deckModel.tempoRatio - 1.0) * 100.0 : 0.0
-                        return (v >= 0 ? "+" : "") + v.toFixed(2) + " %"
-                    }
-                    color: "#e6f1ff"
-                    font.pixelSize: 10
-                }
+                color: "#e6f1ff"
+                font.pixelSize: 10
             }
         }
     }

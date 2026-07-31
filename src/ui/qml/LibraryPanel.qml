@@ -50,15 +50,15 @@ Rectangle {
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
                 spacing: 8
-                Text { text: "TITEL";   color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 320 }
+                Text { text: "TITEL";    color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 320 }
                 Text { text: "KÜNSTLER"; color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 220 }
-                Text { text: "ALBUM";   color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 200 }
-                Text { text: "GENRE";   color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 120 }
-                Text { text: "JAHR";    color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
-                Text { text: "BPM";     color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
-                Text { text: "KEY";     color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
-                Text { text: "LUFS";    color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
-                Text { text: "STATUS";  color: panel.textDim; font.pixelSize: 11; Layout.fillWidth: true }
+                Text { text: "ALBUM";    color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 200 }
+                Text { text: "GENRE";    color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 120 }
+                Text { text: "JAHR";     color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
+                Text { text: "BPM";      color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
+                Text { text: "KEY";      color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
+                Text { text: "LUFS";     color: panel.textDim; font.pixelSize: 11; Layout.preferredWidth: 60 }
+                Text { text: "STATUS";   color: panel.textDim; font.pixelSize: 11; Layout.fillWidth: true }
             }
         }
 
@@ -80,10 +80,56 @@ Rectangle {
                 spacing: 2
 
                 delegate: Rectangle {
+                    id: row
                     width: list.width
                     height: 34
-                    color: index % 2 === 0 ? "#111a25" : "#0f1720"
+                    color: rowMouse.containsMouse ? "#1a2434" :
+                           (index % 2 === 0 ? "#111a25" : "#0f1720")
                     radius: 4
+
+                    // ---- Drag-Source: ins Deck ziehen ----
+                    Drag.active: rowMouse.drag.active
+                    Drag.dragType: Drag.Automatic
+                    Drag.supportedActions: Qt.CopyAction
+                    Drag.mimeData: {
+                        "application/x-musicsearcher-trackid": String(trackId)
+                    }
+
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        drag.target: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                        onPressed: {
+                            row.grabToImage(function(res) {
+                                parent.Drag.imageSource = res.url
+                            })
+                        }
+                        onDoubleClicked: {
+                            // Doppelklick lädt auf Deck A (falls leer sonst B)
+                            if (!backend.player.deckA.isLoaded)
+                                backend.player.deckA.loadTrack(trackId)
+                            else
+                                backend.player.deckB.loadTrack(trackId)
+                        }
+                        onEntered: {
+                            if (musicalKey && musicalKey.length > 0) {
+                                keyPopup.keyCode = musicalKey
+                                keyPopup.trackTitle = title
+                                keyPopup.x = row.width - 260
+                                keyPopup.y = row.height
+                                keyPopup.open()
+                            }
+                        }
+                        onExited: keyPopup.close()
+                    }
+
+                    // Rücksetzen der Position nach Drag-Ende
+                    Drag.onDragFinished: {
+                        row.x = 0; row.y = 0
+                    }
 
                     RowLayout {
                         anchors.fill: parent
@@ -104,7 +150,7 @@ Rectangle {
                             Layout.preferredWidth: 60
                         }
                         Text {
-                            text: musicalKey
+                            text: musicalKey ? backend.player.formatKey(musicalKey) : ""
                             color: musicalKey ? "#ff2fbf" : panel.textDim
                             font.pixelSize: 12
                             font.bold: musicalKey !== ""
@@ -129,7 +175,6 @@ Rectangle {
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             }
 
-            // Overlay-Hinweis wenn leer
             Text {
                 anchors.centerIn: parent
                 visible: list.count === 0
@@ -146,6 +191,70 @@ Rectangle {
                     if (drop.hasUrls) {
                         backend.importUrls(drop.urls)
                         drop.acceptProposedAction()
+                    }
+                }
+            }
+        }
+    }
+
+    // === Hover-Popup: kompatible Keys ===
+    Popup {
+        id: keyPopup
+        width: 240
+        padding: 10
+        modal: false
+        focus: false
+        closePolicy: Popup.NoAutoClose
+
+        property string keyCode: ""
+        property string trackTitle: ""
+
+        background: Rectangle {
+            color: "#0f1620"
+            radius: 6
+            border.width: 1
+            border.color: "#ff2fbf"
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 4
+            Text {
+                text: "Kompatible Keys"
+                color: "#ff2fbf"
+                font.pixelSize: 11
+                font.letterSpacing: 2
+                font.bold: true
+            }
+            Text {
+                text: keyPopup.trackTitle
+                color: "#8899aa"
+                font.pixelSize: 10
+                elide: Text.ElideRight
+                Layout.preferredWidth: 220
+            }
+            Text {
+                text: "aktuell: " + (keyPopup.keyCode ? backend.player.formatKey(keyPopup.keyCode) : "—")
+                color: "#e6f1ff"
+                font.pixelSize: 12
+                font.bold: true
+            }
+            Flow {
+                Layout.preferredWidth: 220
+                spacing: 4
+                Repeater {
+                    model: keyPopup.keyCode ? backend.player.compatibleKeys(keyPopup.keyCode) : []
+                    Rectangle {
+                        width: 36; height: 22; radius: 4
+                        color: index === 0 ? "#ff2fbf" : "#1c2534"
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.08)
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: index === 0 ? "#0a0e14" : "#e6f1ff"
+                            font.pixelSize: 10
+                            font.bold: index === 0
+                        }
                     }
                 }
             }

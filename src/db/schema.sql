@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     filesize        INTEGER,
     comp_pushed     INTEGER DEFAULT 0,      -- 0/1: ist das eine gepushte Version
     parent_track_id INTEGER,                -- optional: verweist auf Original wenn gepushte Version
+    playback_gain_db REAL DEFAULT 0.0,     -- Gain-Offset für LUFS-Normalize (non-destruktiv)
     status          TEXT DEFAULT 'pending', -- pending | analyzing | ready | error
     error_msg       TEXT,
     imported_at     TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -34,13 +35,15 @@ CREATE INDEX IF NOT EXISTS idx_tracks_year   ON tracks(year);
 CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(status);
 
 CREATE TABLE IF NOT EXISTS cues (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-    idx         INTEGER NOT NULL,       -- 0..7
-    position_ms INTEGER NOT NULL,
-    label       TEXT,
-    color       TEXT,
-    source      TEXT DEFAULT 'auto',    -- auto | manual
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id          INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    idx               INTEGER NOT NULL,       -- 0..7
+    position_ms       INTEGER NOT NULL,
+    label             TEXT,
+    color             TEXT,
+    source            TEXT DEFAULT 'auto',    -- auto | manual
+    -- Loop-Cue-Vorbereitung: wenn != NULL wird dieser Cue als Loop-Trigger behandelt
+    loop_length_beats INTEGER,
     UNIQUE(track_id, idx)
 );
 
@@ -85,8 +88,20 @@ CREATE TABLE IF NOT EXISTS beatgrid (
     track_id     INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
     beats_blob   BLOB,       -- np.float32 array in Sekunden
     downbeat_ms  INTEGER,    -- erster Downbeat in ms
-    bpm          REAL
+    bpm          REAL,
+    mode         TEXT DEFAULT 'beat_match'  -- beat_match | structure_boundaries
 );
+
+-- Vocal-Regionen (heuristisch in Phase 3, präzise via Demucs in Phase 4)
+CREATE TABLE IF NOT EXISTS vocal_regions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    start_ms    INTEGER NOT NULL,
+    end_ms      INTEGER NOT NULL,
+    confidence  REAL,                        -- 0..1
+    source      TEXT DEFAULT 'heuristic'     -- heuristic | demucs
+);
+CREATE INDEX IF NOT EXISTS idx_vocal_regions_track ON vocal_regions(track_id);
 
 CREATE TABLE IF NOT EXISTS stems_meta (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

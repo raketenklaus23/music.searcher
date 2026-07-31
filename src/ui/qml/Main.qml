@@ -65,6 +65,30 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
 
+                // Quantizer (global)
+                Text { text: "QUANT"; color: root.textDim; font.pixelSize: 10; font.letterSpacing: 2 }
+                ComboBox {
+                    id: quantCombo
+                    Layout.preferredWidth: 96
+                    model: ["off", "downbeat", "1/4", "1/8", "1/16"]
+                    currentIndex: Math.max(0, model.indexOf(backend.player.quantizerGrid))
+                    onActivated: backend.player.setQuantizer(model[currentIndex])
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Snap für Cue-Setzen + Loop-Start"
+                }
+
+                // Beatgrid-Mode (global default für neue Analysen)
+                Text { text: "GRID"; color: root.textDim; font.pixelSize: 10; font.letterSpacing: 2 }
+                ComboBox {
+                    id: beatgridCombo
+                    Layout.preferredWidth: 150
+                    model: ["beat_match", "structure_boundaries"]
+                    currentIndex: Math.max(0, model.indexOf(backend.player.beatgridMode))
+                    onActivated: backend.player.setBeatgridMode(model[currentIndex])
+                    ToolTip.visible: hovered
+                    ToolTip.text: "beat_match = Bassdrum-Transient · structure_boundaries = Segmentgrenzen"
+                }
+
                 // Notation-Toggle
                 Button {
                     text: backend.player.keyNotation === "camelot" ? "Camelot" : "Open Key"

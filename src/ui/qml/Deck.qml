@@ -18,6 +18,39 @@ Rectangle {
     property string sideLabel: "A"
     property string deckId: "a"
 
+    // Cue-/Loop-Slot-Refresh (Deck-State-Änderung triggert Reload)
+    property var cueList: []
+    property var loopList: []
+    property var _cueLoopUpdater: Connections {
+        target: deck.deckModel
+        function onStateChanged() {
+            if (!deck.deckModel) return
+            deck.cueList = deck.deckModel.cues()
+            deck.loopList = deck.deckModel.loops()
+        }
+    }
+    Component.onCompleted: {
+        if (deck.deckModel) {
+            deck.cueList = deck.deckModel.cues()
+            deck.loopList = deck.deckModel.loops()
+        }
+    }
+
+    function cueAt(idx) {
+        for (var i = 0; i < cueList.length; i++)
+            if (cueList[i].idx === idx) return cueList[i]
+        return null
+    }
+    function loopAt(idx) {
+        for (var i = 0; i < loopList.length; i++)
+            if (loopList[i].idx === idx) return loopList[i]
+        return null
+    }
+
+    NormalizeDialog {
+        id: normDlg
+    }
+
     // --- Beat-Pulse Ring ---
     Rectangle {
         id: pulseRing
@@ -252,6 +285,144 @@ Rectangle {
                 onClicked: backend.actions.trigger("deck." + deck.deckId + ".bpm_double")
             }
             Item { Layout.fillWidth: true }
+            NeonButton {
+                text: "LUFS -14"
+                neon: "#4ade80"
+                onClicked: {
+                    normDlg.deckModel = deck.deckModel
+                    normDlg.open()
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: "Normalisieren auf -14 LUFS (playback_gain oder destruktiv)"
+            }
+        }
+
+        // === Cue-Pads (8) ===
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 3
+            RowLayout {
+                spacing: 4
+                Text { text: "CUE"; color: "#8899aa"; font.pixelSize: 10; font.letterSpacing: 2 }
+                Item { Layout.fillWidth: true }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: 8
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 28
+                        radius: 4
+                        property var cue: deck.cueAt(index)
+                        color: cue ? cue.color : "#1c2534"
+                        opacity: cue ? 0.9 : 0.4
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, cue ? 0.15 : 0.05)
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 0
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: (index + 1)
+                                color: cue ? "#0a0e14" : "#556677"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: cue ? (cue.label || "") : "—"
+                                color: cue ? "#0a0e14" : "#556677"
+                                font.pixelSize: 8
+                                font.letterSpacing: 1
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (m) => {
+                                if (!deck.deckModel) return
+                                if (m.button === Qt.RightButton) {
+                                    if (cue) deck.deckModel.deleteCue(index)
+                                    else     deck.deckModel.setCue(index)
+                                } else {
+                                    if (cue) deck.deckModel.jumpToCue(index)
+                                    else     deck.deckModel.setCue(index)
+                                }
+                            }
+                        }
+                        ToolTip.visible: containsHover
+                        ToolTip.text: cue
+                            ? "Klick: springen · Rechtsklick: löschen"
+                            : "Klick: Cue hier setzen"
+                        HoverHandler { id: hh }
+                        property bool containsHover: hh.hovered
+                    }
+                }
+            }
+        }
+
+        // === Loop-Pads (8) + Loop-Toggle ===
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 3
+            RowLayout {
+                spacing: 4
+                Text { text: "LOOP"; color: "#8899aa"; font.pixelSize: 10; font.letterSpacing: 2 }
+                Item { Layout.fillWidth: true }
+                NeonButton {
+                    text: deck.deckModel && deck.deckModel.loopActive ? "LOOP OFF" : "LOOP ON"
+                    active: deck.deckModel && deck.deckModel.loopActive
+                    neon: "#a78bfa"
+                    onClicked: if (deck.deckModel) deck.deckModel.toggleLoop()
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: 8
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 28
+                        radius: 4
+                        property var lp: deck.loopAt(index)
+                        color: lp ? "#a78bfa" : "#1c2534"
+                        opacity: lp ? 0.9 : 0.4
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, lp ? 0.2 : 0.05)
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 0
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: (index + 1)
+                                color: lp ? "#0a0e14" : "#556677"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: lp ? (lp.beats + "B") : "—"
+                                color: lp ? "#0a0e14" : "#556677"
+                                font.pixelSize: 8
+                                font.letterSpacing: 1
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: if (lp && deck.deckModel) deck.deckModel.triggerLoop(index)
+                        }
+                        ToolTip.visible: containsHover
+                        ToolTip.text: lp
+                            ? ("Loop " + lp.beats + " Beats — " + (lp.label || ""))
+                            : "kein Loop-Slot belegt"
+                        HoverHandler { id: lhh }
+                        property bool containsHover: lhh.hovered
+                    }
+                }
+            }
         }
 
         // === Tempo-Fader ===

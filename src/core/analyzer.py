@@ -6,11 +6,15 @@ Kompatibilität mit typischen DJ-Workflows.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+from .beatgrid import Beatgrid, BeatgridMode, detect_beatgrid
+from .cues import CuePoint, LoopSlot, detect_auto_cues, detect_auto_loops
+from .vocals import detect_vocal_regions
 
 
 @dataclass
@@ -22,6 +26,10 @@ class AnalysisResult:
     energy: Optional[float]    # 0..1
     duration_s: Optional[float]
     beats: Optional[np.ndarray]  # in Sekunden
+    beatgrid: Optional[Beatgrid] = None
+    vocal_regions: list[tuple[int, int, float]] = field(default_factory=list)
+    cues: list[CuePoint] = field(default_factory=list)
+    loops: list[LoopSlot] = field(default_factory=list)
 
 
 # ---- Krumhansl-Schmuckler Profile (aus Musikpsychologie-Literatur) ----------
@@ -64,8 +72,14 @@ _CAMELOT = {
 }
 
 
-def analyze(path: Path, sr: int = 22050) -> AnalysisResult:
-    """Führt komplette Basis-Analyse einer Audiodatei durch."""
+def analyze(
+    path: Path,
+    sr: int = 22050,
+    beatgrid_mode: BeatgridMode = BeatgridMode.BEAT_MATCH,
+) -> AnalysisResult:
+    """Führt komplette Phase-3-Analyse einer Audiodatei durch:
+    BPM → Key → LUFS → Beatgrid → Vocals → Auto-Cues → Auto-Loops.
+    """
     import librosa
     import pyloudnorm as pyln
     import soundfile as sf
@@ -77,7 +91,6 @@ def analyze(path: Path, sr: int = 22050) -> AnalysisResult:
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr, units="time")
     bpm = float(tempo) if tempo else None
     if bpm and (bpm < 70 or bpm > 200):
-        # Doppel-/Halbtempo-Sanity: bringe in 70..200
         while bpm < 70:
             bpm *= 2
         while bpm > 200:
@@ -86,7 +99,7 @@ def analyze(path: Path, sr: int = 22050) -> AnalysisResult:
     # Key via Chroma + Krumhansl-Schmuckler
     key_camelot, key_name = _detect_key(y, sr)
 
-    # LUFS (integrated) — benötigt originales SR und stereo-fähige Daten
+    # LUFS (integrated)
     lufs: Optional[float] = None
     try:
         y_full, sr_full = sf.read(str(path), always_2d=False)
@@ -99,7 +112,17 @@ def analyze(path: Path, sr: int = 22050) -> AnalysisResult:
 
     # Energy (RMS 0..1, grob)
     rms = float(np.sqrt(np.mean(y ** 2)))
-    energy = float(np.clip(rms * 5.0, 0.0, 1.0))  # heuristische Skalierung
+    energy = float(np.clip(rms * 5.0, 0.0, 1.0))
+
+    # Beatgrid (BPM als Hint — schneller/robuster)
+    beatgrid = detect_beatgrid(y, sr, mode=beatgrid_mode, hint_bpm=bpm)
+
+    # Vocal-Regionen (heuristisch)
+    vocal_regions = detect_vocal_regions(y, sr)
+
+    # Auto-Cues + Auto-Loops
+    cues = detect_auto_cues(y, sr, beatgrid, vocal_regions)
+    loops = detect_auto_loops(y, sr, beatgrid, vocal_regions)
 
     return AnalysisResult(
         bpm=bpm,
@@ -109,6 +132,10 @@ def analyze(path: Path, sr: int = 22050) -> AnalysisResult:
         energy=energy,
         duration_s=duration,
         beats=beats,
+        beatgrid=beatgrid,
+        vocal_regions=vocal_regions,
+        cues=cues,
+        loops=loops,
     )
 
 

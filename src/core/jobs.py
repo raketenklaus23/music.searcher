@@ -78,6 +78,40 @@ class JobRunner(QObject):
             lufs=result.lufs,
             energy=result.energy,
         )
+        # Beatgrid persistieren
+        if result.beatgrid is not None:
+            self.library.save_beatgrid(
+                track_id,
+                beats_sec=result.beatgrid.beats_sec,
+                downbeat_ms=result.beatgrid.downbeat_ms,
+                bpm=result.beatgrid.bpm,
+                mode=result.beatgrid.mode.value if hasattr(result.beatgrid.mode, "value") else str(result.beatgrid.mode),
+            )
+        # Vocal-Regionen
+        if result.vocal_regions:
+            self.library.replace_vocal_regions(track_id, result.vocal_regions, source="heuristic")
+        # Auto-Cues
+        for c in result.cues:
+            self.library.upsert_cue(
+                track_id,
+                idx=c.idx,
+                position_ms=c.position_ms,
+                label=c.label,
+                color=c.color,
+                source="auto",
+                loop_length_beats=c.loop_length_beats,
+            )
+        # Auto-Loops
+        for l in result.loops:
+            self.library.upsert_loop(
+                track_id,
+                idx=l.idx,
+                start_ms=l.start_ms,
+                length_ms=l.length_ms,
+                beats=l.beats,
+                label=l.label,
+                source="auto",
+            )
         self._pending = max(0, self._pending - 1)
         self.queueChanged.emit(self._pending)
         self.trackAnalyzed.emit(track_id)

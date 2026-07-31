@@ -78,7 +78,20 @@ class Library:
     def _init_schema(self) -> None:
         sql = SCHEMA_PATH.read_text(encoding="utf-8")
         self._conn.executescript(sql)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Idempotente Migrations für bestehende DBs."""
+        self._add_column_if_missing("tracks", "playback_gain_db", "REAL DEFAULT 0.0")
+        self._add_column_if_missing("cues", "loop_length_beats", "INTEGER")
+        self._add_column_if_missing("beatgrid", "mode", "TEXT DEFAULT 'beat_match'")
+
+    def _add_column_if_missing(self, table: str, column: str, ddl: str) -> None:
+        cur = self._conn.execute(f"PRAGMA table_info({table})")
+        cols = {r["name"] for r in cur.fetchall()}
+        if column not in cols:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
     # ---- Import ---------------------------------------------------------
 
@@ -230,6 +243,173 @@ class Library:
              WHERE id = ?
             """,
             (bpm, key, lufs, energy, track_id),
+        )
+        self._conn.commit()
+
+    # ---- Playback-Gain (LUFS-Normalize, non-destruktiv) --------------
+
+    def set_playback_gain_db(self, track_id: int, db: float) -> None:
+        self._conn.execute(
+            "UPDATE tracks SET playback_gain_db = ? WHERE id = ?",
+            (float(db), track_id),
+        )
+        self._conn.commit()
+
+    def get_playback_gain_db(self, track_id: int) -> float:
+        row = self._conn.execute(
+            "SELECT playback_gain_db FROM tracks WHERE id = ?", (track_id,)
+        ).fetchone()
+        return float(row["playback_gain_db"]) if row and row["playback_gain_db"] is not None else 0.0
+
+    # ---- Cues --------------------------------------------------------
+
+    def upsert_cue(
+        self,
+        track_id: int,
+        idx: int,
+        position_ms: int,
+        label: Optional[str] = None,
+        color: Optional[str] = None,
+        source: str = "auto",
+        loop_length_beats: Optional[int] = None,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO cues (track_id, idx, position_ms, label, color, source, loop_length_beats)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(track_id, idx) DO UPDATE SET
+                position_ms = excluded.position_ms,
+                label       = excluded.label,
+                color       = excluded.color,
+                source      = excluded.source,
+                loop_length_beats = excluded.loop_length_beats
+            """,
+            (track_id, idx, int(position_ms), label, color, source, loop_length_beats),
+        )
+        self._conn.commit()
+
+    def delete_cue(self, track_id: int, idx: int) -> None:
+        self._conn.execute("DELETE FROM cues WHERE track_id = ? AND idx = ?", (track_id, idx))
+        self._conn.commit()
+
+    def get_cues(self, track_id: int) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT idx, position_ms, label, color, source, loop_length_beats "
+            "FROM cues WHERE track_id = ? ORDER BY idx",
+            (track_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    # ---- Loops -------------------------------------------------------
+
+    def upsert_loop(
+        self,
+        track_id: int,
+        idx: int,
+        start_ms: int,
+        length_ms: int,
+        beats: Optional[int] = None,
+        label: Optional[str] = None,
+        source: str = "auto",
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO loops (track_id, idx, start_ms, length_ms, beats, label, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(track_id, idx) DO UPDATE SET
+                start_ms  = excluded.start_ms,
+                length_ms = excluded.length_ms,
+                beats     = excluded.beats,
+                label     = excluded.label,
+                source    = excluded.source
+            """,
+            (track_id, idx, int(start_ms), int(length_ms), beats, label, source),
+        )
+        self._conn.commit()
+
+    def get_loops(self, track_id: int) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT idx, start_ms, length_ms, beats, label, source "
+            "FROM loops WHERE track_id = ? ORDER BY idx",
+            (track_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    # ---- Beatgrid ----------------------------------------------------
+
+    def save_beatgrid(
+        self,
+        track_id: int,
+        beats_sec: list[float],
+        downbeat_ms: Optional[int] = None,
+        bpm: Optional[float] = None,
+        mode: str = "beat_match",
+    ) -> None:
+        import numpy as np
+        blob = np.asarray(beats_sec, dtype=np.float32).tobytes()
+        self._conn.execute(
+            """
+            INSERT INTO beatgrid (track_id, beats_blob, downbeat_ms, bpm, mode)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(track_id) DO UPDATE SET
+                beats_blob  = excluded.beats_blob,
+                downbeat_ms = excluded.downbeat_ms,
+                bpm         = excluded.bpm,
+                mode        = excluded.mode
+            """,
+            (track_id, blob, downbeat_ms, bpm, mode),
+        )
+        self._conn.commit()
+
+    def get_beatgrid(self, track_id: int) -> Optional[dict]:
+        import numpy as np
+        row = self._conn.execute("SELECT * FROM beatgrid WHERE track_id = ?", (track_id,)).fetchone()
+        if row is None:
+            return None
+        beats = np.frombuffer(row["beats_blob"], dtype=np.float32).tolist() if row["beats_blob"] else []
+        return {
+            "beats_sec": beats,
+            "downbeat_ms": row["downbeat_ms"],
+            "bpm": row["bpm"],
+            "mode": row["mode"] if "mode" in row.keys() else "beat_match",
+        }
+
+    # ---- Vocal-Regionen ----------------------------------------------
+
+    def replace_vocal_regions(
+        self,
+        track_id: int,
+        regions: list[tuple[int, int, float]],
+        source: str = "heuristic",
+    ) -> None:
+        """regions: [(start_ms, end_ms, confidence), ...]"""
+        self._conn.execute("DELETE FROM vocal_regions WHERE track_id = ?", (track_id,))
+        self._conn.executemany(
+            "INSERT INTO vocal_regions (track_id, start_ms, end_ms, confidence, source) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(track_id, int(s), int(e), float(c), source) for s, e, c in regions],
+        )
+        self._conn.commit()
+
+    def get_vocal_regions(self, track_id: int) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT start_ms, end_ms, confidence, source FROM vocal_regions "
+            "WHERE track_id = ? ORDER BY start_ms",
+            (track_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    # ---- Settings (Quantizer, Beatgrid-Mode global) ------------------
+
+    def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        row = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
         )
         self._conn.commit()
 

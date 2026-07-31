@@ -16,6 +16,7 @@ from PySide6.QtCore import (
 from ..audio.mixer import CrossfadeCurve
 from ..audio.player import Player
 from ..audio.sync import KeyMode, SnapMode, SyncMode
+from ..core.beatgrid import Beatgrid, BeatgridMode, QuantizeGrid, Quantizer
 from ..core.keys import (
     all_keys,
     camelot_to_openkey,
@@ -24,6 +25,13 @@ from ..core.keys import (
     keyrow_chromatic,
 )
 from ..core.library import Library
+from ..core.loudness import (
+    DEFAULT_TARGET_LUFS,
+    NormalizeMode,
+    measure_lufs,
+    normalize_destructive,
+    normalize_playback_gain,
+)
 
 _DOUBLE_PRESS_WINDOW_S = 0.32   # innerhalb dieser Zeit gilt der 2. Klick als Double-Press
 
@@ -34,12 +42,14 @@ class DeckBridge(QObject):
     stateChanged = Signal()
     positionChanged = Signal()
 
-    def __init__(self, player: Player, deck_id: str, library: Library, parent=None):
+    def __init__(self, player: Player, deck_id: str, library: Library,
+                 quantizer: Optional[Quantizer] = None, parent=None):
         super().__init__(parent)
         self._player = player
         self._id = deck_id
         self._library = library
         self._deck = player.deck_a if deck_id == "a" else player.deck_b
+        self._quantizer = quantizer or Quantizer(QuantizeGrid.QUARTER)
 
         # Dual-Press-Timing
         self._last_sync_press = 0.0
@@ -50,6 +60,24 @@ class DeckBridge(QObject):
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start()
+
+    def _current_beatgrid(self) -> Optional[Beatgrid]:
+        tid = self._deck.state.track_id
+        if tid is None:
+            return None
+        bg = self._library.get_beatgrid(tid)
+        if bg is None:
+            return None
+        try:
+            mode = BeatgridMode(bg.get("mode") or "beat_match")
+        except ValueError:
+            mode = BeatgridMode.BEAT_MATCH
+        return Beatgrid(
+            bpm=float(bg.get("bpm") or self._deck.state.bpm or 120.0),
+            beats_sec=list(bg.get("beats_sec") or []),
+            downbeat_ms=int(bg.get("downbeat_ms") or 0),
+            mode=mode,
+        )
 
     # ---- Slots aus QML: Track/Transport ------------------------------
 
@@ -239,6 +267,140 @@ class DeckBridge(QObject):
     def _strip(self):
         return self._player.mixer.strip_a if self._id == "a" else self._player.mixer.strip_b
 
+    # ---- Cues (8 Slots) ---------------------------------------------
+
+    @Slot(int)
+    def jumpToCue(self, idx: int) -> None:  # noqa: N802
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        for c in self._library.get_cues(tid):
+            if c["idx"] == idx:
+                self._deck.seek_seconds(c["position_ms"] / 1000.0)
+                self.positionChanged.emit()
+                return
+
+    @Slot(int)
+    def setCue(self, idx: int) -> None:  # noqa: N802
+        """Setzt Cue idx auf aktuelle Playhead-Position (gequantisiert)."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        pos_ms = int(self._deck.state.playhead_frames / self._deck.engine_sr * 1000)
+        pos_ms = self._quantizer.snap_ms(pos_ms, self._current_beatgrid())
+        self._library.upsert_cue(tid, idx=idx, position_ms=pos_ms, source="manual")
+        self.stateChanged.emit()
+
+    @Slot(int)
+    def deleteCue(self, idx: int) -> None:  # noqa: N802
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        self._library.delete_cue(tid, idx)
+        self.stateChanged.emit()
+
+    @Slot(result=list)
+    def cues(self) -> list:  # noqa: N802
+        tid = self._deck.state.track_id
+        if tid is None:
+            return []
+        return self._library.get_cues(tid)
+
+    # ---- Loops (8 Slots) --------------------------------------------
+
+    @Slot(int)
+    def triggerLoop(self, idx: int) -> None:  # noqa: N802
+        """Aktiviert Loop-Slot idx (springt zum Start, aktiviert Loop)."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        for l in self._library.get_loops(tid):
+            if l["idx"] == idx:
+                start_s = l["start_ms"] / 1000.0
+                end_s = (l["start_ms"] + l["length_ms"]) / 1000.0
+                self._deck.set_loop(start_s, end_s, active=True)
+                self._deck.seek_seconds(start_s)
+                self.stateChanged.emit()
+                self.positionChanged.emit()
+                return
+
+    @Slot(int, int)
+    def setLoopLengthBeats(self, idx: int, beats: int) -> None:  # noqa: N802
+        """Ändert Länge von Loop idx auf 'beats' Beats (BPM-basiert)."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        bg = self._current_beatgrid()
+        length_ms = self._quantizer.loop_length_ms(beats, bg)
+        for l in self._library.get_loops(tid):
+            if l["idx"] == idx:
+                self._library.upsert_loop(
+                    tid, idx=idx, start_ms=l["start_ms"], length_ms=length_ms,
+                    beats=beats, label=l.get("label"), source="manual",
+                )
+                # falls aktiver Loop → sofort übernehmen
+                if self._deck.state.loop_active:
+                    start_s = l["start_ms"] / 1000.0
+                    self._deck.set_loop(start_s, start_s + length_ms / 1000.0, active=True)
+                self.stateChanged.emit()
+                return
+
+    @Slot()
+    def toggleLoop(self) -> None:  # noqa: N802
+        st = self._deck.state
+        if st.loop_active:
+            self._deck.clear_loop()
+        elif st.loop_end_s > st.loop_start_s:
+            self._deck.set_loop(st.loop_start_s, st.loop_end_s, active=True)
+        self.stateChanged.emit()
+
+    @Slot()
+    def clearLoop(self) -> None:  # noqa: N802
+        self._deck.clear_loop()
+        self.stateChanged.emit()
+
+    @Slot(result=list)
+    def loops(self) -> list:  # noqa: N802
+        tid = self._deck.state.track_id
+        if tid is None:
+            return []
+        return self._library.get_loops(tid)
+
+    @Property(bool, notify=stateChanged)
+    def loopActive(self) -> bool:
+        return self._deck.state.loop_active
+
+    # ---- LUFS-Normalize (pro Deck) ----------------------------------
+
+    @Slot(str, float, result="QVariantMap")
+    def normalizeLufs(self, mode: str, target: float = DEFAULT_TARGET_LUFS) -> dict:  # noqa: N802
+        """mode: 'playback_gain' | 'destructive'. Gibt {ok, gain_db, error} zurück."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return {"ok": False, "gain_db": 0.0, "error": "kein Track geladen"}
+        t = self._library.get_track(tid)
+        if t is None:
+            return {"ok": False, "gain_db": 0.0, "error": "Track nicht in Library"}
+        cur_lufs = t.lufs if t.lufs is not None else measure_lufs(Path(t.path))
+        if cur_lufs is None:
+            return {"ok": False, "gain_db": 0.0, "error": "LUFS-Messung fehlgeschlagen"}
+        if mode == NormalizeMode.PLAYBACK_GAIN.value:
+            gain = normalize_playback_gain(cur_lufs, target)
+            self._library.set_playback_gain_db(tid, gain)
+            self._deck.set_gain_db(gain)
+            self.stateChanged.emit()
+            return {"ok": True, "gain_db": gain, "error": None}
+        if mode == NormalizeMode.DESTRUCTIVE.value:
+            ok, applied, err = normalize_destructive(Path(t.path), target)
+            if ok:
+                # Neue LUFS = target, Playback-Gain zurücksetzen
+                self._library.update_analysis(tid, lufs=target)
+                self._library.set_playback_gain_db(tid, 0.0)
+                self._deck.set_gain_db(0.0)
+                self.stateChanged.emit()
+            return {"ok": ok, "gain_db": applied, "error": err}
+        return {"ok": False, "gain_db": 0.0, "error": f"unbekannter Modus: {mode}"}
+
     # ---- Properties für QML -----------------------------------------
 
     @Property(str, notify=stateChanged)
@@ -331,13 +493,29 @@ class PlayerBridge(QObject):
     engineChanged = Signal()
     devicesChanged = Signal()
     keyNotationChanged = Signal()
+    quantizerChanged = Signal()
+    beatgridModeChanged = Signal()
 
     def __init__(self, player: Player, library: Library, parent=None):
         super().__init__(parent)
         self._player = player
         self._library = library
-        self._deck_a = DeckBridge(player, "a", library, self)
-        self._deck_b = DeckBridge(player, "b", library, self)
+        # Persistierten Quantizer laden (Setting-Key: quantizer_grid)
+        saved_q = library.get_setting("quantizer_grid", QuantizeGrid.QUARTER.value)
+        try:
+            initial_grid = QuantizeGrid(saved_q)
+        except ValueError:
+            initial_grid = QuantizeGrid.QUARTER
+        self._quantizer = Quantizer(initial_grid)
+        # Beatgrid-Mode (global default für neue Analysen)
+        saved_bg = library.get_setting("beatgrid_mode", BeatgridMode.BEAT_MATCH.value)
+        try:
+            self._beatgrid_mode = BeatgridMode(saved_bg)
+        except ValueError:
+            self._beatgrid_mode = BeatgridMode.BEAT_MATCH
+        # Decks bekommen Referenz auf den Quantizer
+        self._deck_a = DeckBridge(player, "a", library, self._quantizer, self)
+        self._deck_b = DeckBridge(player, "b", library, self._quantizer, self)
         self._key_notation = "camelot"   # oder "openkey"
 
     # ---- Deck-Zugriff für QML ----
@@ -382,6 +560,46 @@ class PlayerBridge(QObject):
     @Property(float, constant=False)
     def globalFilterResonance(self) -> float:
         return self._player.mixer.global_filter_resonance
+
+    # ---- Quantizer + Beatgrid-Mode (global) ---------------------
+
+    @Slot(str)
+    def setQuantizer(self, grid: str) -> None:  # noqa: N802
+        """grid: 'off' | 'downbeat' | '1/4' | '1/8' | '1/16'."""
+        try:
+            g = QuantizeGrid(grid)
+        except ValueError:
+            return
+        self._quantizer.set_grid(g)
+        self._library.set_setting("quantizer_grid", g.value)
+        self.quantizerChanged.emit()
+
+    @Property(str, notify=quantizerChanged)
+    def quantizerGrid(self) -> str:
+        return self._quantizer.grid.value
+
+    @Slot(result=list)
+    def quantizerOptions(self) -> list:  # noqa: N802
+        return [g.value for g in QuantizeGrid]
+
+    @Slot(str)
+    def setBeatgridMode(self, mode: str) -> None:  # noqa: N802
+        """mode: 'beat_match' | 'structure_boundaries'."""
+        try:
+            m = BeatgridMode(mode)
+        except ValueError:
+            return
+        self._beatgrid_mode = m
+        self._library.set_setting("beatgrid_mode", m.value)
+        self.beatgridModeChanged.emit()
+
+    @Property(str, notify=beatgridModeChanged)
+    def beatgridMode(self) -> str:
+        return self._beatgrid_mode.value
+
+    @Slot(result=list)
+    def beatgridModes(self) -> list:  # noqa: N802
+        return [m.value for m in BeatgridMode]
 
     # ---- Sync / Master ------------------------------------------
 

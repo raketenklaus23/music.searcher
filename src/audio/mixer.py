@@ -136,21 +136,36 @@ class ChannelStrip:
 
 
 class Mixer:
-    """Summiert 2 Decks mit Crossfader + je Channel-Strip."""
+    """Summiert 2-4 Decks. A/B ueber Crossfader, C/D immer voll aufgemischt
+    (wenn `four_deck_mode` an). Jeder Kanal hat seinen eigenen ChannelStrip.
+    """
 
-    def __init__(self, deck_a: Deck, deck_b: Deck, sr: int = 48000):
+    def __init__(self, deck_a: Deck, deck_b: Deck, sr: int = 48000,
+                 deck_c: Optional[Deck] = None, deck_d: Optional[Deck] = None):
         self.deck_a = deck_a
         self.deck_b = deck_b
+        self.deck_c = deck_c
+        self.deck_d = deck_d
         self.global_filter = GlobalFilterParams()
         self.strip_a = ChannelStrip(sr, self.global_filter)
         self.strip_b = ChannelStrip(sr, self.global_filter)
+        self.strip_c = ChannelStrip(sr, self.global_filter) if deck_c else None
+        self.strip_d = ChannelStrip(sr, self.global_filter) if deck_d else None
         self.sr = sr
         self._xfader = 0.0     # -1.0 (nur A) .. +1.0 (nur B), 0 = Mitte
         self._curve = CrossfadeCurve.LINEAR
         self._master_gain_db = 0.0
         self._peak_l = 0.0
         self._peak_r = 0.0
+        self._four_deck_mode = False
         self._lock = threading.Lock()
+
+    def set_four_deck_mode(self, on: bool) -> None:
+        self._four_deck_mode = bool(on)
+
+    @property
+    def four_deck_mode(self) -> bool:
+        return self._four_deck_mode
 
     def set_global_filter_resonance(self, v: float) -> None:
         self.global_filter.resonance = float(np.clip(v, 0.0, 1.0))
@@ -201,17 +216,19 @@ class Mixer:
         return g_a, g_b
 
     def render(self, frames: int) -> np.ndarray:
-        a = self.deck_a.render(frames)
-        b = self.deck_b.render(frames)
-        a = self.strip_a.process(a)
-        b = self.strip_b.process(b)
+        a = self.strip_a.process(self.deck_a.render(frames))
+        b = self.strip_b.process(self.deck_b.render(frames))
 
         g_a, g_b = self._crossfader_gains()
         master = 10.0 ** (self._master_gain_db / 20.0)
 
-        out = (a * np.float32(g_a) + b * np.float32(g_b)) * np.float32(master)
+        out = a * np.float32(g_a) + b * np.float32(g_b)
+        if self._four_deck_mode and self.deck_c is not None and self.strip_c is not None:
+            out += self.strip_c.process(self.deck_c.render(frames))
+        if self._four_deck_mode and self.deck_d is not None and self.strip_d is not None:
+            out += self.strip_d.process(self.deck_d.render(frames))
+        out *= np.float32(master)
 
-        # Peak-Update (billig, nur max abs pro Kanal)
         self._peak_l = 0.9 * self._peak_l + 0.1 * float(np.max(np.abs(out[:, 0])))
         self._peak_r = 0.9 * self._peak_r + 0.1 * float(np.max(np.abs(out[:, 1])))
         return out

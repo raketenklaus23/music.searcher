@@ -97,6 +97,16 @@ ApplicationWindow {
                     ToolTip.text: "Klick: Notation umschalten (Ctrl+K)"
                 }
 
+                // 4-Deck-Toggle
+                Button {
+                    text: backend.player.fourDeckMode ? "4-DECK" : "2-DECK"
+                    checkable: true
+                    checked: backend.player.fourDeckMode
+                    onClicked: backend.player.setFourDeckMode(!backend.player.fourDeckMode)
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Umschalten zwischen 2- und 4-Deck-Layout"
+                }
+
                 Text {
                     id: statusText
                     text: "Ready."
@@ -205,35 +215,69 @@ ApplicationWindow {
             }
         }
 
-        // === DECK ZONE ===
-        RowLayout {
+        // === DECK ZONE (adaptiv: 2- oder 4-Deck) ===
+        property bool fourDeck: backend.player.fourDeckMode
+
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 520
-            spacing: 10
+            Layout.preferredHeight: fourDeck ? 780 : 520
+            spacing: 8
 
-            Deck {
-                id: deckA
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                deckModel: backend.player.deckA
-                deckId: "a"
-                sideLabel: "A"
-                neon: root.neon
+                spacing: 10
+
+                Deck {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    deckModel: backend.player.deckA
+                    deckId: "a"
+                    sideLabel: "A"
+                    neon: root.neon
+                }
+                Mixer {
+                    Layout.preferredWidth: 340
+                    Layout.fillHeight: true
+                }
+                Deck {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    deckModel: backend.player.deckB
+                    deckId: "b"
+                    sideLabel: "B"
+                    neon: root.neonAmber
+                }
             }
 
-            Mixer {
-                Layout.preferredWidth: 340
-                Layout.fillHeight: true
-            }
-
-            Deck {
-                id: deckB
+            // Zweite Reihe nur bei 4-Deck-Modus
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                deckModel: backend.player.deckB
-                deckId: "b"
-                sideLabel: "B"
-                neon: root.neonAmber
+                spacing: 10
+                visible: fourDeck
+
+                Deck {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    deckModel: backend.player.deckC
+                    deckId: "c"
+                    sideLabel: "C"
+                    neon: "#a78bfa"
+                }
+                Rectangle {
+                    Layout.preferredWidth: 340
+                    Layout.fillHeight: true
+                    color: "transparent"
+                }
+                Deck {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    deckModel: backend.player.deckD
+                    deckId: "d"
+                    sideLabel: "D"
+                    neon: "#4ade80"
+                }
             }
         }
 

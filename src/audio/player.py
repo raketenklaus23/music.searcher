@@ -20,7 +20,10 @@ class Player:
         self.blocksize = blocksize
         self.deck_a = Deck("a", engine_sr=samplerate)
         self.deck_b = Deck("b", engine_sr=samplerate)
-        self.mixer = Mixer(self.deck_a, self.deck_b, sr=samplerate)
+        self.deck_c = Deck("c", engine_sr=samplerate)
+        self.deck_d = Deck("d", engine_sr=samplerate)
+        self.mixer = Mixer(self.deck_a, self.deck_b, sr=samplerate,
+                           deck_c=self.deck_c, deck_d=self.deck_d)
         self.sync = SyncController(self.deck_a, self.deck_b)
         self.engine = AudioEngine(self._callback, EngineConfig(
             samplerate=samplerate, blocksize=blocksize,
@@ -40,8 +43,8 @@ class Player:
         # ggf. Decks auf neue Engine-Samplerate
         if cfg.samplerate != self.samplerate:
             self.samplerate = cfg.samplerate
-            self.deck_a.engine_sr = cfg.samplerate
-            self.deck_b.engine_sr = cfg.samplerate
+            for d in (self.deck_a, self.deck_b, self.deck_c, self.deck_d):
+                d.engine_sr = cfg.samplerate
 
     def stop(self) -> None:
         self.engine.stop()

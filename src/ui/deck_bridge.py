@@ -50,7 +50,10 @@ class DeckBridge(QObject):
         self._player = player
         self._id = deck_id
         self._library = library
-        self._deck = player.deck_a if deck_id == "a" else player.deck_b
+        self._deck = {
+            "a": player.deck_a, "b": player.deck_b,
+            "c": player.deck_c, "d": player.deck_d,
+        }[deck_id]
         self._quantizer = quantizer or Quantizer(QuantizeGrid.QUARTER)
 
         # Dual-Press-Timing
@@ -689,7 +692,12 @@ class PlayerBridge(QObject):
         # Decks bekommen Referenz auf den Quantizer
         self._deck_a = DeckBridge(player, "a", library, self._quantizer, self)
         self._deck_b = DeckBridge(player, "b", library, self._quantizer, self)
+        self._deck_c = DeckBridge(player, "c", library, self._quantizer, self)
+        self._deck_d = DeckBridge(player, "d", library, self._quantizer, self)
         self._key_notation = "camelot"   # oder "openkey"
+        # 4-Deck-Modus persistent
+        self._four_deck_mode = library.get_setting("four_deck_mode", "0") == "1"
+        self._player.mixer.set_four_deck_mode(self._four_deck_mode)
         # Stem-Runner-Referenz — wird von AppBackend gesetzt
         self._stem_runner_ref = None
 
@@ -703,13 +711,35 @@ class PlayerBridge(QObject):
     def deckB(self) -> DeckBridge:
         return self._deck_b
 
+    @Property(QObject, constant=True)
+    def deckC(self) -> DeckBridge:
+        return self._deck_c
+
+    @Property(QObject, constant=True)
+    def deckD(self) -> DeckBridge:
+        return self._deck_d
+
+    fourDeckModeChanged = Signal()
+
+    @Property(bool, notify=fourDeckModeChanged)
+    def fourDeckMode(self) -> bool:
+        return self._four_deck_mode
+
+    @Slot(bool)
+    def setFourDeckMode(self, on: bool) -> None:  # noqa: N802
+        self._four_deck_mode = bool(on)
+        self._player.mixer.set_four_deck_mode(self._four_deck_mode)
+        self._library.set_setting("four_deck_mode", "1" if on else "0")
+        self.fourDeckModeChanged.emit()
+
     # ---- Deck-Registry (Python-side, für Action-Registry / Keyboard / MIDI) ----
 
     def deckIds(self) -> list[str]:  # noqa: N802 — bewusst kein Slot, nur Python
-        return ["a", "b"]
+        return ["a", "b", "c", "d"] if self._four_deck_mode else ["a", "b"]
 
     def deckByIdInternal(self, deck_id: str) -> "DeckBridge":  # noqa: N802
-        return self._deck_a if deck_id == "a" else self._deck_b
+        return {"a": self._deck_a, "b": self._deck_b,
+                "c": self._deck_c, "d": self._deck_d}[deck_id]
 
     # ---- Mixer ---------------------------------------------------
 
@@ -781,14 +811,14 @@ class PlayerBridge(QObject):
     @Slot(str)
     def setMaster(self, deck_id: str) -> None:  # noqa: N802
         self._player.sync.set_master_override(deck_id)
-        self._deck_a.stateChanged.emit()
-        self._deck_b.stateChanged.emit()
+        for d in (self._deck_a, self._deck_b, self._deck_c, self._deck_d):
+            d.stateChanged.emit()
 
     @Slot()
     def unsyncAll(self) -> None:  # noqa: N802
         self._player.sync.unsync()
-        self._deck_a.stateChanged.emit()
-        self._deck_b.stateChanged.emit()
+        for d in (self._deck_a, self._deck_b, self._deck_c, self._deck_d):
+            d.stateChanged.emit()
 
     # ---- Key-Notation ------------------------------------------
 

@@ -66,7 +66,7 @@ class AppBackend(Backend):
     @Slot(int, str)
     def _on_stem_finished(self, track_id: int, model: str) -> None:
         # Falls Track auf einem Deck geladen ist → Stems dort direkt aktivieren
-        for deck_id in ("a", "b"):
+        for deck_id in ("a", "b", "c", "d"):
             deck = self._player_bridge.deckByIdInternal(deck_id)
             if deck._deck.state.track_id == track_id:
                 from src.core.stems import stem_paths_from_json

@@ -4,7 +4,7 @@ Eigenständige Musik-Verwaltung + DJ-Vorproduktion in Python. Flache Library, 2 
 
 ## Status
 
-**Phasen 1–7: ✅ fertig · Phasen 8–10 laufen**
+**Alle Phasen 1–10: ✅ fertig**
 
 - Phase 1 — Library + Basis-Analyse (BPM/Key/LUFS/Energy)
 - Phase 2 — Decks + Mixer + Sync/Key-Match
@@ -13,6 +13,9 @@ Eigenständige Musik-Verwaltung + DJ-Vorproduktion in Python. Flache Library, 2 
 - Phase 5 — Vibe-Suggester + Set-Fingerprint + MusicBrainz/Discogs
 - Phase 6 — Waveform-Canvas + Vocal-Overlay + Beat-Ticks + Animationen
 - Phase 7 — Editierbare Keyboard-Shortcuts (17 Actions)
+- Phase 8 — Standalone-Build (Windows .exe + macOS .app via PyInstaller)
+- Phase 9 — MIDI-Mapping (python-rtmidi, Learn-Mode, Denon SC Live 4 Default)
+- Phase 10 — 4-Deck-Option (adaptives QML-Layout, persistente Einstellung)
 
 ## Start
 
@@ -60,9 +63,9 @@ music.searcher/
 - [x] Phase 5 — DJ-Set-Analyse + Similar-Tracks + Online-Lookup
 - [x] Phase 6 — Waveform-Shader, Vocal-Overlay, Beat-Ticks, Animationen
 - [x] Phase 7 — Editierbare Keyboard-Shortcuts
-- [ ] Phase 8 — Standalone-Build (Windows .exe + macOS .app via PyInstaller)
-- [ ] Phase 9 — MIDI-Controller-Mapping (Denon SC Live 4)
-- [ ] Phase 10 — 4-Deck-Option (adaptives Layout)
+- [x] Phase 8 — Standalone-Build (Windows .exe + macOS .app via PyInstaller)
+- [x] Phase 9 — MIDI-Controller-Mapping (Denon SC Live 4)
+- [x] Phase 10 — 4-Deck-Option (adaptives Layout)
 
 ## Standalone-Build
 

@@ -409,6 +409,47 @@ class DeckBridge(QObject):
             return {"ok": ok, "gain_db": applied, "error": err}
         return {"ok": False, "gain_db": 0.0, "error": f"unbekannter Modus: {mode}"}
 
+    # ---- Waveform-Peaks + Overlays (Phase 6) ------------------------
+
+    @Slot(int, result=list)
+    def waveformPeaks(self, buckets: int) -> list:  # noqa: N802
+        """Downsampelt den Deck-Puffer auf `buckets` Peak-Werte (0..1).
+        Wird von QML-Canvas zum Zeichnen genutzt.
+        """
+        buf = self._deck._buf
+        if buf is None or buf.shape[0] == 0 or buckets <= 0:
+            return []
+        import numpy as np
+        n = buf.shape[0]
+        mono = np.abs(buf).mean(axis=1) if buf.ndim > 1 else np.abs(buf)
+        chunk = max(1, n // buckets)
+        cut = (n // chunk) * chunk
+        arr = mono[:cut].reshape(-1, chunk)
+        peaks = arr.max(axis=1)
+        m = float(peaks.max()) if peaks.size else 1.0
+        if m > 1e-6:
+            peaks = peaks / m
+        return peaks.astype(float).tolist()
+
+    @Slot(result=list)
+    def vocalRegions(self) -> list:  # noqa: N802
+        tid = self._deck.state.track_id
+        if tid is None:
+            return []
+        try:
+            return self._library.get_vocal_regions(tid)
+        except Exception:
+            return []
+
+    @Slot(int, result=list)
+    def beatTicks(self, max_beats: int) -> list:  # noqa: N802
+        """Beat-Zeitstempel in Sekunden (bis max_beats)."""
+        bg = self._current_beatgrid()
+        if bg is None or not bg.beats_sec:
+            return []
+        beats = list(bg.beats_sec)[:max_beats]
+        return [float(x) for x in beats]
+
     # ---- Properties für QML -----------------------------------------
 
     @Property(str, notify=stateChanged)

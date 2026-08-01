@@ -12,6 +12,8 @@ Rectangle {
     border.color: deck.deckModel && deck.deckModel.isMaster
                   ? "#ff2fbf"
                   : Qt.rgba(1, 1, 1, 0.06)
+    Behavior on border.color { ColorAnimation { duration: 220 } }
+    Behavior on border.width { NumberAnimation { duration: 180 } }
 
     property var  deckModel: null        // DeckBridge Instanz
     property color neon: "#00e0ff"
@@ -144,16 +146,102 @@ Rectangle {
             }
         }
 
-        // === Waveform-Placeholder (Phase 3: Shader) ===
+        // === Waveform (Peaks + Vocals + Beats) ===
         Rectangle {
+            id: waveWrap
             Layout.fillWidth: true
-            Layout.preferredHeight: 96
+            Layout.preferredHeight: 108
             radius: 6
             color: "#0a1018"
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.05)
+            clip: true
 
+            property var peaks: []
+            property var vocals: []
+            property var beats: []
+
+            function refresh() {
+                if (!deck.deckModel || !deck.deckModel.isLoaded) {
+                    peaks = []; vocals = []; beats = []
+                    canvas.requestPaint()
+                    return
+                }
+                peaks  = deck.deckModel.waveformPeaks(Math.max(200, Math.floor(width)))
+                vocals = deck.deckModel.vocalRegions()
+                beats  = deck.deckModel.beatTicks(4096)
+                canvas.requestPaint()
+            }
+
+            Connections {
+                target: deck.deckModel
+                function onStateChanged() { waveWrap.refresh() }
+            }
+            onWidthChanged: refresh()
+            Component.onCompleted: refresh()
+
+            Canvas {
+                id: canvas
+                anchors.fill: parent
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    var W = width, H = height
+                    ctx.fillStyle = "#0a1018"
+                    ctx.fillRect(0, 0, W, H)
+
+                    // --- Vocal-Regionen (violett-transparente Band-Overlays) ---
+                    if (deck.deckModel && deck.deckModel.durationSec > 0 && waveWrap.vocals.length > 0) {
+                        var dur = deck.deckModel.durationSec * 1000.0
+                        ctx.fillStyle = Qt.rgba(0.65, 0.45, 0.98, 0.18)
+                        for (var i = 0; i < waveWrap.vocals.length; i++) {
+                            var v = waveWrap.vocals[i]
+                            var x0 = (v.start_ms / dur) * W
+                            var x1 = (v.end_ms   / dur) * W
+                            ctx.fillRect(x0, 4, Math.max(1, x1 - x0), H - 8)
+                        }
+                    }
+
+                    // --- Peaks (mirror) ---
+                    var P = waveWrap.peaks
+                    if (P.length > 0) {
+                        var mid = H / 2
+                        var stepX = W / P.length
+                        var grad = ctx.createLinearGradient(0, 0, 0, H)
+                        grad.addColorStop(0.0, deck.neon)
+                        grad.addColorStop(0.5, Qt.rgba(0.0, 0.88, 1.0, 0.75))
+                        grad.addColorStop(1.0, "#ff2fbf")
+                        ctx.strokeStyle = grad
+                        ctx.lineWidth = Math.max(1, stepX * 0.9)
+                        for (var j = 0; j < P.length; j++) {
+                            var amp = P[j] * (mid - 6)
+                            var xx = j * stepX + stepX / 2
+                            ctx.beginPath()
+                            ctx.moveTo(xx, mid - amp)
+                            ctx.lineTo(xx, mid + amp)
+                            ctx.stroke()
+                        }
+                    }
+
+                    // --- Beat-Ticks (dünne, transparente Marker) ---
+                    if (deck.deckModel && deck.deckModel.durationSec > 0 && waveWrap.beats.length > 0) {
+                        var durS = deck.deckModel.durationSec
+                        ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.10)
+                        ctx.lineWidth = 1
+                        for (var k = 0; k < waveWrap.beats.length; k++) {
+                            var bx = (waveWrap.beats[k] / durS) * W
+                            ctx.beginPath()
+                            ctx.moveTo(bx, 0)
+                            ctx.lineTo(bx, H)
+                            ctx.stroke()
+                        }
+                    }
+                }
+            }
+
+            // Playhead (bewegt sich smooth ueber positionChanged)
             Rectangle {
+                id: playhead
                 visible: deck.deckModel && deck.deckModel.isLoaded
                 width: 2
                 height: parent.height
@@ -161,6 +249,12 @@ Rectangle {
                 x: {
                     if (!deck.deckModel || deck.deckModel.durationSec <= 0) return 0
                     return (deck.deckModel.positionSec / deck.deckModel.durationSec) * parent.width
+                }
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 0
+                    width: 8; height: 8; radius: 4
+                    color: deck.neon
                 }
             }
 

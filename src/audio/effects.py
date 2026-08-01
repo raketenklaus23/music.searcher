@@ -152,6 +152,72 @@ class OneKnobCompressor:
 
 
 # -----------------------------------------------------------------------
+# A10-Compressor (Pioneer-A10-Style "Vinyl-Push")
+# Aggressiver als der Kanal-Compressor. Ein Knob 0..1 steuert Threshold + Ratio.
+# Ziel: alte Vinyl-Rips knallig+laut machen ("Save Pushed"-Workflow).
+# Kurve (v>0):
+#   ratio:      3.0 → 8.0     (aggressive Anhebung)
+#   threshold:  -3 dB → -30 dB
+#   attack:     5 ms          (Vinyl-Peaks sofort einfangen)
+#   release:    50 ms         (kickfreundlich)
+#   makeup:     |T| * (1 - 1/R) * 0.85
+# v == 0 → Bypass.
+# -----------------------------------------------------------------------
+
+class A10Compressor:
+    ATTACK_MS = 5.0
+    RELEASE_MS = 50.0
+    RATIO_MIN = 3.0
+    RATIO_MAX = 8.0
+    THRESH_MIN_DB = -3.0
+    THRESH_MAX_DB = -30.0
+    _MAKEUP_HEADROOM = 0.85
+
+    def __init__(self, sr: int):
+        self.sr = sr
+        self._value = 0.0
+        if _HAS_PB:
+            self._comp = Compressor(
+                threshold_db=0.0,
+                ratio=1.0,
+                attack_ms=self.ATTACK_MS,
+                release_ms=self.RELEASE_MS,
+            )
+        else:
+            self._comp = None
+        self._makeup_lin = 1.0
+
+    @property
+    def value(self) -> float:
+        return self._value
+
+    def set_value(self, v: float) -> None:
+        v = float(np.clip(v, 0.0, 1.0))
+        self._value = v
+        if self._comp is None:
+            return
+        ratio = self.RATIO_MIN + v * (self.RATIO_MAX - self.RATIO_MIN)
+        threshold_db = self.THRESH_MIN_DB + v * (self.THRESH_MAX_DB - self.THRESH_MIN_DB)
+        self._comp.ratio = float(ratio)
+        self._comp.threshold_db = float(threshold_db)
+        red_max_db = abs(threshold_db) * (1.0 - 1.0 / ratio)
+        makeup_db = red_max_db * self._MAKEUP_HEADROOM
+        self._makeup_lin = 10.0 ** (makeup_db / 20.0)
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        if self._comp is None or self._value < 1e-4:
+            return x
+        y = self._comp(x, self.sr, reset=False)
+        if y.dtype != np.float32:
+            y = y.astype(np.float32)
+        if self._makeup_lin != 1.0:
+            y = y * np.float32(self._makeup_lin)
+        # True-Peak-Schutz — clip auf 0.99 statt hartes 1.0
+        np.clip(y, -0.99, 0.99, out=y)
+        return y
+
+
+# -----------------------------------------------------------------------
 # ChannelFX: Echo / Reverb / Noise / Filter mit Wet-Knob
 # Nur der aktive Typ läuft. Filter ist bipolar (LP/HP je nach Vorzeichen).
 # Filter-Resonance ist global (siehe GlobalFilterParams).

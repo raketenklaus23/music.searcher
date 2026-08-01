@@ -26,6 +26,8 @@ try:
 except Exception:
     _HAS_PEDALBOARD = False
 
+from .effects import A10Compressor
+
 
 @dataclass
 class DeckState:
@@ -70,6 +72,8 @@ class Deck:
         self._stem_volumes: dict[str, float] = {}
         self._stem_muted: dict[str, bool] = {}
         self._stem_soloed: dict[str, bool] = {}
+        # A10-Compressor (Pioneer-A10-Style Vinyl-Push) — Deck-Insert
+        self._a10 = A10Compressor(engine_sr)
 
     # ---- Load & Params ------------------------------------------------
 
@@ -247,6 +251,13 @@ class Deck:
     def set_volume(self, v: float) -> None:
         self._state.volume = float(max(0.0, min(1.0, v)))
 
+    def set_a10(self, v: float) -> None:
+        self._a10.set_value(v)
+
+    @property
+    def a10_value(self) -> float:
+        return self._a10.value
+
     def _update_pitchshift(self) -> None:
         if self._pitchshift is None:
             return
@@ -336,6 +347,9 @@ class Deck:
                         out = np.vstack([out, pad])
             except Exception:
                 pass
+
+        # A10-Push (Vinyl-Compressor, aggressiv) — optionaler Insert
+        out = self._a10.process(out)
 
         # Gain + Volume
         gain_lin = 10.0 ** (self._state.gain_db / 20.0) * self._state.volume

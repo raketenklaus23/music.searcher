@@ -50,6 +50,9 @@ Rectangle {
     NormalizeDialog {
         id: normDlg
     }
+    SavePushedDialog {
+        id: pushDlg
+    }
 
     // --- Beat-Pulse Ring ---
     Rectangle {
@@ -285,6 +288,28 @@ Rectangle {
                 onClicked: backend.actions.trigger("deck." + deck.deckId + ".bpm_double")
             }
             Item { Layout.fillWidth: true }
+
+            // A10-Push (Live-Vorschau)
+            Text { text: "PUSH"; color: "#ff2fbf"; font.pixelSize: 9; font.letterSpacing: 2 }
+            Slider {
+                Layout.preferredWidth: 100
+                from: 0.0; to: 1.0
+                value: deck.deckModel ? deck.deckModel.a10Value : 0.0
+                onMoved: if (deck.deckModel) deck.deckModel.setA10(value)
+                ToolTip.visible: hovered
+                ToolTip.text: "A10 Vinyl-Push (Live-Compressor auf Deck)"
+            }
+            NeonButton {
+                text: "SAVE PUSHED"
+                neon: "#ff2fbf"
+                onClicked: {
+                    pushDlg.deckModel = deck.deckModel
+                    pushDlg.open()
+                }
+                ToolTip.visible: hovered
+                ToolTip.text: "A10 offline in Datei rendern"
+            }
+
             NeonButton {
                 text: "LUFS -14"
                 neon: "#4ade80"

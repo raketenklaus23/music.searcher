@@ -33,6 +33,7 @@ from ..core.loudness import (
     normalize_playback_gain,
 )
 from ..core.stems import STEM_NAMES, StemModel, stem_paths_from_json
+from ..core.bounce import SavePushedMode, save_pushed
 
 _DOUBLE_PRESS_WINDOW_S = 0.32   # innerhalb dieser Zeit gilt der 2. Klick als Double-Press
 
@@ -487,6 +488,58 @@ class DeckBridge(QObject):
         """1..16 innerhalb der 16-Bar-Phrase."""
         p = self._player.sync.beat_position(self._id)
         return p[2] if p else 0
+
+    # ---- A10-Compressor (Deck-Insert, Pioneer-A10-Style) -----------
+
+    @Slot(float)
+    def setA10(self, v: float) -> None:  # noqa: N802
+        self._deck.set_a10(v)
+        self.stateChanged.emit()
+
+    @Property(float, notify=stateChanged)
+    def a10Value(self) -> float:
+        return float(self._deck.a10_value)
+
+    @Slot(str, result="QVariantMap")
+    def savePushed(self, mode: str) -> dict:  # noqa: N802
+        """mode: 'new_file' | 'replace' | 'cancel'. Rendert Track offline durch A10
+        mit aktueller Push-Intensitaet. Bei NEW_FILE wird die Datei ausserdem als
+        neuer Track in die Library importiert."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return {"ok": False, "path": "", "error": "kein Track geladen"}
+        t = self._library.get_track(tid)
+        if t is None:
+            return {"ok": False, "path": "", "error": "Track nicht in Library"}
+        try:
+            m = SavePushedMode(mode)
+        except ValueError:
+            return {"ok": False, "path": "", "error": f"unbekannter Modus: {mode}"}
+        push = float(self._deck.a10_value)
+        ok, out_path, err = save_pushed(Path(t.path), push, m)
+        if not ok:
+            return {"ok": False, "path": "", "error": err or ""}
+        if m == SavePushedMode.NEW_FILE and out_path is not None:
+            # Als neuen Track in Library importieren (kein Copy — file ist bereits am Zielort)
+            new_id = self._library.import_file(out_path, copy=False)
+            if new_id is not None:
+                # Herkunft markieren (comp_pushed=1, parent_track_id=tid)
+                self._library._conn.execute(
+                    "UPDATE tracks SET comp_pushed = 1, parent_track_id = ? WHERE id = ?",
+                    (tid, new_id),
+                )
+                self._library._conn.commit()
+        elif m == SavePushedMode.REPLACE:
+            # LUFS neu messen (Loudness hat sich veraendert)
+            try:
+                from ..core.loudness import measure_lufs
+                lufs = measure_lufs(Path(t.path))
+                if lufs is not None:
+                    self._library.update_analysis(tid, lufs=lufs)
+            except Exception:
+                pass
+        self.stateChanged.emit()
+        return {"ok": True, "path": str(out_path) if out_path else "", "error": None}
 
     # ---- Stems (pro Deck, siehe StemPanel.qml) ---------------------
 

@@ -10,6 +10,8 @@ Rectangle {
     border.width: 1
     border.color: Qt.rgba(1, 0.184, 0.749, 0.15)
 
+    signal requestDetach()
+
     property color neonPink: "#ff2fbf"
     property color colA: "#00e0ff"
     property color colB: "#ffb020"
@@ -154,13 +156,26 @@ Rectangle {
         anchors.margins: 8
         spacing: 6
 
-        Text {
-            text: "MIXER"
-            color: mixer.neonPink
-            font.pixelSize: 12
-            font.letterSpacing: 3
-            font.bold: true
-            Layout.alignment: Qt.AlignHCenter
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            Item { Layout.fillWidth: true }
+            Text {
+                text: "MIXER"
+                color: mixer.neonPink
+                font.pixelSize: 12
+                font.letterSpacing: 3
+                font.bold: true
+            }
+            Item { Layout.fillWidth: true }
+            Button {
+                text: "↗"
+                implicitWidth: 24
+                implicitHeight: 20
+                onClicked: mixer.requestDetach()
+                ToolTip.visible: hovered
+                ToolTip.text: "Mixer als separates Fenster loesen"
+            }
         }
 
         // Global FX Resonance

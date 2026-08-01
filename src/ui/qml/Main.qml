@@ -246,6 +246,7 @@ ApplicationWindow {
                     Mixer {
                         SplitView.preferredWidth: 340
                         SplitView.minimumWidth: 200
+                        onRequestDetach: mixerWindow.open()
                     }
                     Deck {
                         SplitView.fillWidth: true
@@ -391,6 +392,9 @@ ApplicationWindow {
     }
     KeyBindingsDialog {
         id: keyBindingsDlg
+    }
+    MixerWindow {
+        id: mixerWindow
     }
 
     Connections {

@@ -128,9 +128,7 @@ class Backend(QObject):
     def libraryModel(self) -> LibraryModel:  # noqa: N802 (QML style)
         return self._model
 
-    @Slot(list)
-    def importUrls(self, urls: list) -> None:  # noqa: N802
-        """Drag&Drop-Handler: bekommt Liste von QUrl."""
+    def _urls_to_paths(self, urls: list) -> list[Path]:
         paths: list[Path] = []
         for u in urls:
             if isinstance(u, QUrl):
@@ -142,6 +140,12 @@ class Backend(QObject):
                 p = Path(s)
             if p.exists():
                 paths.append(p)
+        return paths
+
+    @Slot(list)
+    def importUrls(self, urls: list) -> None:  # noqa: N802
+        """Drag&Drop-Handler: bekommt Liste von QUrl."""
+        paths = self._urls_to_paths(urls)
         if not paths:
             return
         ids = self._library.import_paths(paths, copy=True)
@@ -152,6 +156,28 @@ class Backend(QObject):
             if t is not None:
                 self._jobs.enqueue(tid, Path(t.path))
         self.statusMessage.emit(f"{len(ids)} Track(s) importiert, Analyse läuft…")
+
+    @Slot(list, str)
+    def importUrlsToDeck(self, urls: list, deck_id: str) -> None:  # noqa: N802
+        """Import + sofort ersten Track auf angegebenes Deck laden."""
+        paths = self._urls_to_paths(urls)
+        if not paths:
+            return
+        ids = self._library.import_paths(paths, copy=True)
+        if not ids:
+            return
+        self._model.refresh()
+        for tid in ids:
+            self.trackImported.emit(tid)
+            t = self._library.get_track(tid)
+            if t is not None:
+                self._jobs.enqueue(tid, Path(t.path))
+        deck = getattr(self._player_bridge, f"deck{deck_id.upper()}", None)
+        if deck is not None:
+            deck.loadTrack(ids[0])
+        self.statusMessage.emit(
+            f"{len(ids)} Track(s) importiert, Deck {deck_id.upper()} geladen."
+        )
 
     @Slot()
     def reanalyzePending(self) -> None:  # noqa: N802

@@ -269,8 +269,12 @@ Rectangle {
 
             DropArea {
                 anchors.fill: parent
-                keys: ["application/x-musicsearcher-trackid"]
                 onDropped: (drop) => {
+                    if (drop.hasUrls) {
+                        backend.importUrlsToDeck(drop.urls, deck.deckId)
+                        drop.acceptProposedAction()
+                        return
+                    }
                     var tid = parseInt(drop.getDataAsString("application/x-musicsearcher-trackid"))
                     if (!isNaN(tid) && deck.deckModel) deck.deckModel.loadTrack(tid)
                 }

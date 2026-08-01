@@ -84,12 +84,27 @@ class KillSection:
 
 
 # -----------------------------------------------------------------------
-# Single-Knob-Compressor (Pioneer-A9-Style)
-# Ein Knob 0..1 steuert threshold/ratio/makeup gekoppelt.
+# Single-Knob-Compressor (Macro, User-Vorgabe 2026-08-01)
+# Ein Knob 0..1 steuert Ratio + Threshold + Auto-Makeup gekoppelt.
+# Kurve (v>0):
+#   ratio:      2.0 → 4.0        (moderate Anhebung)
+#   threshold:  0 dB → -22 dB    (linear absenken)
+#   makeup:     automatisch aus |T| und Ratio geschätzt (Loudness-Kompensation)
+#   attack:     22 ms            (kick-freundlich, im Fenster 15-30)
+#   release:    80 ms            (kick-freundlich, im Fenster 60-100)
+# v == 0 → Bypass.
 # -----------------------------------------------------------------------
 
 class OneKnobCompressor:
-    """0.0 = aus (bypass), 1.0 = max Squash + Makeup."""
+    """Macro-Compressor. 0.0 = bypass, 1.0 = voll auf (Ratio 4:1, T=-22 dB)."""
+
+    ATTACK_MS = 22.0
+    RELEASE_MS = 80.0
+    RATIO_MIN = 2.0
+    RATIO_MAX = 4.0
+    THRESH_MAX_DB = -22.0
+    # Anteil des Signals, das im Mittel oberhalb Threshold liegt (heuristisch)
+    _MAKEUP_HEADROOM = 0.7
 
     def __init__(self, sr: int):
         self.sr = sr
@@ -98,11 +113,12 @@ class OneKnobCompressor:
             self._comp = Compressor(
                 threshold_db=0.0,
                 ratio=1.0,
-                attack_ms=8.0,
-                release_ms=120.0,
+                attack_ms=self.ATTACK_MS,
+                release_ms=self.RELEASE_MS,
             )
         else:
             self._comp = None
+        self._makeup_lin = 1.0
 
     @property
     def value(self) -> float:
@@ -113,22 +129,26 @@ class OneKnobCompressor:
         self._value = v
         if self._comp is None:
             return
-        # Kopplung:
-        #   threshold:   0 dB -> -22 dB
-        #   ratio:       1.0  ->  5.0
-        #   (makeup wird extern per Gain-Multiplikator gemacht)
-        self._comp.threshold_db = float(0.0 - v * 22.0)
-        self._comp.ratio = float(1.0 + v * 4.0)
+        ratio = self.RATIO_MIN + v * (self.RATIO_MAX - self.RATIO_MIN)
+        threshold_db = v * self.THRESH_MAX_DB
+        self._comp.ratio = float(ratio)
+        self._comp.threshold_db = float(threshold_db)
+        # Auto-Makeup: |T| * (1 - 1/R) ist die max. Reduktion bei 0 dBFS.
+        # Wir kompensieren einen Anteil davon (nicht die Peaks, sondern den
+        # mittleren Lautheitsverlust) → Signal bleibt gefühlt gleich laut.
+        red_max_db = abs(threshold_db) * (1.0 - 1.0 / ratio)
+        makeup_db = red_max_db * self._MAKEUP_HEADROOM
+        self._makeup_lin = 10.0 ** (makeup_db / 20.0)
 
     def process(self, x: np.ndarray) -> np.ndarray:
         if self._comp is None or self._value < 1e-4:
             return x
         y = self._comp(x, self.sr, reset=False)
-        # Makeup: bis +6 dB abhängig von Value
-        makeup = 10.0 ** ((self._value * 6.0) / 20.0)
         if y.dtype != np.float32:
             y = y.astype(np.float32)
-        return y * np.float32(makeup)
+        if self._makeup_lin != 1.0:
+            y = y * np.float32(self._makeup_lin)
+        return y
 
 
 # -----------------------------------------------------------------------

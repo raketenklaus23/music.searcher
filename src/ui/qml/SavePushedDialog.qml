@@ -1,43 +1,35 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
-Dialog {
+Window {
     id: dlg
-    modal: true
     title: "Save Pushed — Vinyl-Push speichern"
-    standardButtons: Dialog.NoButton
+    width: 520
+    height: 320
+    minimumWidth: 380
+    minimumHeight: 240
+    modality: Qt.ApplicationModal
+    color: "#131a24"
+    flags: Qt.Dialog
+
     property var deckModel: null
 
-    anchors.centerIn: parent
-    width: 480
-    padding: 16
+    function open() { resultText.text = ""; show(); raise(); requestActivate() }
 
-    background: Rectangle {
-        color: "#131a24"
-        radius: 10
-        border.width: 1
-        border.color: "#ff2fbf"
-    }
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 16
+        spacing: 12
 
-    header: Rectangle {
-        color: "transparent"
-        height: 32
         Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
             text: "SAVE PUSHED"
             color: "#ff2fbf"
             font.pixelSize: 14
             font.letterSpacing: 3
             font.bold: true
         }
-    }
-
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 12
 
         Text {
             text: "Der Track wird offline durch den A10-Compressor mit der aktuellen Push-Intensitaet gerendert."
@@ -54,6 +46,8 @@ Dialog {
             font.bold: true
         }
 
+        Item { Layout.fillHeight: true }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -62,28 +56,30 @@ Dialog {
                 Layout.fillWidth: true
                 text: "Neue Datei"
                 onClicked: {
+                    if (!dlg.deckModel) return
                     var r = dlg.deckModel.savePushed("new_file")
                     resultText.text = r.ok
                         ? "Neue Datei erstellt:\n" + r.path
                         : "Fehler: " + (r.error || "unbekannt")
-                    if (r.ok) dlg.accept()
+                    if (r.ok) dlg.close()
                 }
             }
             Button {
                 Layout.fillWidth: true
                 text: "Original ersetzen (+ .original-Backup)"
                 onClicked: {
+                    if (!dlg.deckModel) return
                     var r = dlg.deckModel.savePushed("replace")
                     resultText.text = r.ok
                         ? "Original ersetzt. Backup gespeichert."
                         : "Fehler: " + (r.error || "unbekannt")
-                    if (r.ok) dlg.accept()
+                    if (r.ok) dlg.close()
                 }
             }
             Button {
                 Layout.fillWidth: true
                 text: "Abbrechen"
-                onClicked: dlg.reject()
+                onClicked: dlg.close()
             }
         }
 

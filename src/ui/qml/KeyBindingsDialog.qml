@@ -1,24 +1,20 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
-Dialog {
+Window {
     id: dlg
     title: "Tastatur-Kuerzel"
-    modal: true
-    standardButtons: Dialog.Close
+    width: 780
+    height: 600
+    minimumWidth: 520
+    minimumHeight: 380
+    modality: Qt.NonModal
+    color: "#0f1620"
+    flags: Qt.Window
 
-    anchors.centerIn: parent
-    width: 720
-    height: 560
-    padding: 12
-
-    background: Rectangle {
-        color: "#0f1620"
-        radius: 12
-        border.width: 1
-        border.color: "#00e0ff"
-    }
+    function open() { show(); raise(); requestActivate(); reload() }
 
     property var actionList: []
 
@@ -32,10 +28,10 @@ Dialog {
         function onRegistryChanged()  { dlg.reload() }
     }
     Component.onCompleted: reload()
-    onOpened: reload()
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 12
         spacing: 8
 
         RowLayout {
@@ -149,7 +145,6 @@ Dialog {
                                         keyCell.capturing = false
                                         return
                                     }
-                                    // Modifier alleine ignorieren
                                     if (ev.key === Qt.Key_Shift || ev.key === Qt.Key_Control ||
                                         ev.key === Qt.Key_Alt   || ev.key === Qt.Key_Meta) return
                                     var mods = []
@@ -159,7 +154,7 @@ Dialog {
                                     if (ev.modifiers & Qt.MetaModifier)    mods.push("Meta")
                                     var name = ev.text && ev.text.length === 1
                                              ? ev.text.toUpperCase()
-                                             : keySpecialName(ev.key)
+                                             : dlg.keySpecialName(ev.key)
                                     if (!name) { keyCell.capturing = false; return }
                                     var seq = mods.concat([name]).join("+")
                                     backend.actions.setShortcut(modelData.id, seq)
@@ -179,6 +174,15 @@ Dialog {
                     }
                 }
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            Button {
+                text: "Schliessen"
+                onClicked: dlg.close()
             }
         }
     }

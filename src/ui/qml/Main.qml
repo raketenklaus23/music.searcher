@@ -301,13 +301,6 @@ ApplicationWindow {
             }
         }
 
-        SimilarTracksDialog {
-            id: similarDlg
-        }
-        KeyBindingsDialog {
-            id: keyBindingsDlg
-        }
-
         // Globale Shortcut-Registry aus Actions
         property var _shortcutList: backend.actions.listAll()
         Connections {
@@ -384,6 +377,12 @@ ApplicationWindow {
     }
     MidiDialog {
         id: midiDialog
+    }
+    SimilarTracksDialog {
+        id: similarDlg
+    }
+    KeyBindingsDialog {
+        id: keyBindingsDlg
     }
 
     Connections {

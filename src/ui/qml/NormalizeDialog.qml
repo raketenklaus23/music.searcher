@@ -1,23 +1,28 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
-Dialog {
+Window {
     id: dlg
     title: "LUFS-Normalisieren"
-    modal: true
-    standardButtons: Dialog.Cancel
-    anchors.centerIn: parent
-    width: 460
+    width: 520
+    height: 280
+    minimumWidth: 380
+    minimumHeight: 220
+    modality: Qt.ApplicationModal
+    color: "#131a24"
+    flags: Qt.Dialog
 
     property var deckModel: null
     property real target: -14.0
     property string resultText: ""
 
-    onAboutToShow: resultText = ""
+    function open() { resultText = ""; show(); raise(); requestActivate() }
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 14
         spacing: 14
 
         Text {
@@ -70,6 +75,17 @@ Dialog {
             font.pixelSize: 11
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
+        }
+
+        Item { Layout.fillHeight: true }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            Button {
+                text: "Schliessen"
+                onClicked: dlg.close()
+            }
         }
     }
 }

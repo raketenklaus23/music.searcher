@@ -1,24 +1,20 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
-Dialog {
+Window {
     id: dlg
     title: "MIDI-Controller"
-    modal: true
-    standardButtons: Dialog.Close
+    width: 780
+    height: 600
+    minimumWidth: 520
+    minimumHeight: 380
+    modality: Qt.NonModal
+    color: "#0f1620"
+    flags: Qt.Window
 
-    anchors.centerIn: parent
-    width: 720
-    height: 560
-    padding: 12
-
-    background: Rectangle {
-        color: "#0f1620"
-        radius: 12
-        border.width: 1
-        border.color: "#a78bfa"
-    }
+    function open() { show(); raise(); requestActivate(); reload() }
 
     property var portList: []
     property var bindingList: []
@@ -29,7 +25,6 @@ Dialog {
         bindingList = backend.midi.bindings()
     }
 
-    onOpened: reload()
     Connections {
         target: backend.midi
         function onBindingsChanged() { dlg.bindingList = backend.midi.bindings() }
@@ -41,9 +36,9 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 12
         spacing: 8
 
-        // ---- Port-Auswahl ---------------------------------------------
         RowLayout {
             Layout.fillWidth: true
             Text {
@@ -89,7 +84,6 @@ Dialog {
             }
         }
 
-        // ---- Bindings-Tabelle ----------------------------------------
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -176,13 +170,20 @@ Dialog {
             }
         }
 
-        Text {
-            text: "Hinweis: mit Learn die naechste Note/CC am Controller senden. "
-                  + "Default-Map ist Denon SC Live 4 (Play/Cue/Sync/Crossfader/Tempo-Fader)."
-            color: "#8899aa"
-            font.pixelSize: 10
-            wrapMode: Text.WordWrap
+        RowLayout {
             Layout.fillWidth: true
+            Text {
+                Layout.fillWidth: true
+                text: "Hinweis: mit Learn die naechste Note/CC am Controller senden. "
+                      + "Default-Map ist Denon SC Live 4 (Play/Cue/Sync/Crossfader/Tempo-Fader)."
+                color: "#8899aa"
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Button {
+                text: "Schliessen"
+                onClicked: dlg.close()
+            }
         }
     }
 }

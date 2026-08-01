@@ -1,15 +1,21 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import "controls"
 
-Dialog {
+Window {
     id: dlg
     title: "Audio-Einstellungen"
-    modal: true
-    standardButtons: Dialog.Close
     width: 640
-    height: 440
+    height: 460
+    minimumWidth: 420
+    minimumHeight: 320
+    modality: Qt.NonModal
+    color: "#0f1620"
+    flags: Qt.Window
+
+    function open() { show(); raise(); requestActivate(); refresh() }
 
     property var devices: []
     property int currentDeviceIndex: -1
@@ -18,7 +24,6 @@ Dialog {
 
     function refresh() {
         devices = backend.player.listDevices()
-        // markiere aktuelles Device
         var cur = backend.player.currentDeviceLabel
         for (var i = 0; i < devices.length; i++) {
             if (devices[i].label === cur) { currentDeviceIndex = i; break }
@@ -26,12 +31,12 @@ Dialog {
         srCombo.currentIndex = srCombo.model.indexOf(backend.player.currentSamplerate)
         bsCombo.currentIndex = bsCombo.model.indexOf(backend.player.currentBlocksize)
     }
-    onOpened: refresh()
 
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 14
         spacing: 10
 
-        // ASIO-Warnung wenn kein ASIO im PortAudio-Build ist
         Rectangle {
             visible: {
                 for (var i = 0; i < dlg.devices.length; i++)
@@ -120,6 +125,8 @@ Dialog {
             Item { Layout.fillWidth: true }
         }
 
+        Item { Layout.fillHeight: true }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -143,6 +150,10 @@ Dialog {
             NeonButton {
                 text: "REFRESH DEVICES"
                 onClicked: dlg.refresh()
+            }
+            Button {
+                text: "Schliessen"
+                onClicked: dlg.close()
             }
         }
     }

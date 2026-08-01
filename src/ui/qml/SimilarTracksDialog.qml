@@ -1,50 +1,60 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
-Dialog {
+Window {
     id: dlg
     title: "Aehnliche Tracks — Vibe-Match"
-    modal: true
-    standardButtons: Dialog.Close
+    width: 840
+    height: 600
+    minimumWidth: 560
+    minimumHeight: 380
+    modality: Qt.NonModal
+    color: "#0f1620"
+    flags: Qt.Window
 
     property int refTrackId: -1
     property string refTitle: ""
     property var results: []
-
-    anchors.centerIn: parent
-    width: 780
-    height: 560
-    padding: 14
-
-    background: Rectangle {
-        color: "#0f1620"
-        radius: 12
-        border.width: 1
-        border.color: "#00e0ff"
-    }
-
-    header: Rectangle {
-        color: "transparent"
-        height: 44
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 14
-            anchors.verticalCenter: parent.verticalCenter
-            text: "SIMILAR TRACKS · " + dlg.refTitle
-            color: "#00e0ff"
-            font.pixelSize: 13
-            font.letterSpacing: 3
-            font.bold: true
-        }
-    }
-
-    // --- Modus-Umschalter (offline / online / hybrid) ---
     property string mode: "offline"
+
+    function open() { show(); raise(); requestActivate() }
+
+    function openFor(trackId, title) {
+        dlg.refTrackId = trackId
+        dlg.refTitle = title
+        dlg.mode = "offline"
+        dlg.runSearch()
+        dlg.open()
+    }
+
+    function runSearch() {
+        if (refTrackId < 0) return
+        results = backend.suggester.findSimilar(refTrackId, 25, tolSlider.value)
+    }
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 14
         spacing: 10
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text {
+                Layout.fillWidth: true
+                text: "SIMILAR TRACKS · " + dlg.refTitle
+                color: "#00e0ff"
+                font.pixelSize: 13
+                font.letterSpacing: 3
+                font.bold: true
+                elide: Text.ElideRight
+            }
+            Button {
+                text: "Schliessen"
+                onClicked: dlg.close()
+            }
+        }
 
         RowLayout {
             spacing: 6
@@ -180,20 +190,5 @@ Dialog {
                 font.pixelSize: 12
             }
         }
-    }
-
-    function openFor(trackId, title) {
-        dlg.refTrackId = trackId
-        dlg.refTitle = title
-        dlg.mode = "offline"
-        dlg.runSearch()
-        dlg.open()
-    }
-
-    function runSearch() {
-        if (refTrackId < 0) return
-        // Fuer alle Modi start mit Offline-Vibe-Vector;
-        // online/hybrid ergaenzt Online-Tags spaeter (Phase 5.1).
-        results = backend.suggester.findSimilar(refTrackId, 25, tolSlider.value)
     }
 }

@@ -21,6 +21,7 @@ from src.core.stem_jobs import StemRunner  # noqa: E402
 from src.ui.actions import Actions, register_default_actions  # noqa: E402
 from src.ui.bridge import Backend  # noqa: E402
 from src.ui.deck_bridge import PlayerBridge  # noqa: E402
+from src.ui.midi_bridge import MidiBridge  # noqa: E402
 from src.ui.suggester_bridge import SuggesterBridge  # noqa: E402
 
 
@@ -47,6 +48,7 @@ class AppBackend(Backend):
         self._stem_queue = 0
 
         self._suggester = SuggesterBridge(library, parent=self)
+        self._midi = MidiBridge(self._actions, self._player_bridge, parent=self)
 
         self._queue_count = 0
         self.queueChanged.connect(self._on_queue_change)
@@ -95,6 +97,10 @@ class AppBackend(Backend):
     @Property("QVariant", constant=True)
     def suggester(self):
         return self._suggester
+
+    @Property("QVariant", constant=True)
+    def midi(self):
+        return self._midi
 
 
 def main() -> int:

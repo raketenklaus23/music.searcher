@@ -314,6 +314,10 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 Button {
+                    text: "MIDI"
+                    onClicked: midiDialog.open()
+                }
+                Button {
                     text: "Tastatur"
                     onClicked: keyBindingsDlg.open()
                 }
@@ -333,6 +337,9 @@ ApplicationWindow {
 
     AudioSettings {
         id: audioDialog
+    }
+    MidiDialog {
+        id: midiDialog
     }
 
     Connections {

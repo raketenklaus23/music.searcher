@@ -399,6 +399,57 @@ class Library:
         )
         return [dict(r) for r in cur.fetchall()]
 
+    # ---- Stems-Meta -------------------------------------------------
+
+    def upsert_stems_meta(
+        self,
+        track_id: int,
+        model: str,
+        stem_paths_json: str,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO stems_meta (track_id, model, stem_paths_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(track_id, model) DO UPDATE SET
+                stem_paths_json = excluded.stem_paths_json,
+                created_at      = CURRENT_TIMESTAMP
+            """,
+            (track_id, model, stem_paths_json),
+        )
+        self._conn.commit()
+
+    def get_stems_meta(self, track_id: int) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT model, stem_paths_json, created_at FROM stems_meta "
+            "WHERE track_id = ? ORDER BY created_at DESC",
+            (track_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_stems_for_model(self, track_id: int, model: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT stem_paths_json FROM stems_meta WHERE track_id = ? AND model = ?",
+            (track_id, model),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            import json
+            return json.loads(row["stem_paths_json"])
+        except Exception:
+            return None
+
+    def delete_stems_meta(self, track_id: int, model: Optional[str] = None) -> None:
+        if model:
+            self._conn.execute(
+                "DELETE FROM stems_meta WHERE track_id = ? AND model = ?",
+                (track_id, model),
+            )
+        else:
+            self._conn.execute("DELETE FROM stems_meta WHERE track_id = ?", (track_id,))
+        self._conn.commit()
+
     # ---- Settings (Quantizer, Beatgrid-Mode global) ------------------
 
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:

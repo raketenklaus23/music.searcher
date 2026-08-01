@@ -12,10 +12,20 @@ ID-Konvention:  `<domain>.<target>.<verb>`
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
+
+try:
+    from platformdirs import user_data_dir
+    _CFG_DIR = Path(user_data_dir("MusicSearcher", "MMM"))
+except ImportError:
+    _CFG_DIR = Path(__file__).resolve().parents[2] / "data"
+
+SHORTCUTS_FILE = _CFG_DIR / "shortcuts.json"
 
 
 @dataclass
@@ -33,10 +43,36 @@ class Actions(QObject):
     """Registry + QML-Fassade."""
 
     registryChanged = Signal()
+    shortcutsChanged = Signal()
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self._actions: dict[str, ActionSpec] = {}
+        self._overrides: dict[str, str] = self._load_overrides()
+
+    def _load_overrides(self) -> dict[str, str]:
+        try:
+            if SHORTCUTS_FILE.exists():
+                return json.loads(SHORTCUTS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {}
+
+    def _save_overrides(self) -> None:
+        try:
+            SHORTCUTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SHORTCUTS_FILE.write_text(
+                json.dumps(self._overrides, indent=2), encoding="utf-8",
+            )
+        except Exception as exc:
+            print(f"[Actions] shortcuts.json save failed: {exc}")
+
+    def effective_shortcut(self, action_id: str) -> Optional[str]:
+        if action_id in self._overrides:
+            v = self._overrides[action_id]
+            return v if v else None
+        spec = self._actions.get(action_id)
+        return spec.default_shortcut if spec else None
 
     def register(
         self,
@@ -92,6 +128,7 @@ class Actions(QObject):
                 "label": a.label,
                 "category": a.category,
                 "defaultShortcut": a.default_shortcut or "",
+                "shortcut": self.effective_shortcut(a.id) or "",
                 "tags": a.tags,
             }
             for a in self._actions.values()
@@ -101,6 +138,30 @@ class Actions(QObject):
     def labelOf(self, action_id: str) -> str:  # noqa: N802
         spec = self._actions.get(action_id)
         return spec.label if spec else action_id
+
+    @Slot(str, str)
+    def setShortcut(self, action_id: str, shortcut: str) -> None:  # noqa: N802
+        """Setzt einen Shortcut-Override. Leerer String = Aktion deaktiviert."""
+        self._overrides[action_id] = shortcut or ""
+        self._save_overrides()
+        self.shortcutsChanged.emit()
+
+    @Slot(str)
+    def resetShortcut(self, action_id: str) -> None:  # noqa: N802
+        """Loescht den Override → Default aus register_default_actions gilt."""
+        self._overrides.pop(action_id, None)
+        self._save_overrides()
+        self.shortcutsChanged.emit()
+
+    @Slot()
+    def resetAllShortcuts(self) -> None:  # noqa: N802
+        self._overrides.clear()
+        self._save_overrides()
+        self.shortcutsChanged.emit()
+
+    @Slot(str, result=str)
+    def shortcutOf(self, action_id: str) -> str:  # noqa: N802
+        return self.effective_shortcut(action_id) or ""
 
 
 def register_default_actions(actions: Actions, player_bridge) -> None:

@@ -260,6 +260,26 @@ ApplicationWindow {
         SimilarTracksDialog {
             id: similarDlg
         }
+        KeyBindingsDialog {
+            id: keyBindingsDlg
+        }
+
+        // Globale Shortcut-Registry aus Actions
+        property var _shortcutList: backend.actions.listAll()
+        Connections {
+            target: backend.actions
+            function onShortcutsChanged() { root._shortcutList = backend.actions.listAll() }
+            function onRegistryChanged()  { root._shortcutList = backend.actions.listAll() }
+        }
+        Repeater {
+            model: root._shortcutList
+            Shortcut {
+                sequence: modelData.shortcut || ""
+                enabled: modelData.shortcut && modelData.shortcut.length > 0
+                context: Qt.ApplicationShortcut
+                onActivated: backend.actions.trigger(modelData.id)
+            }
+        }
 
         // === BOTTOM BAR ===
         Rectangle {
@@ -293,6 +313,10 @@ ApplicationWindow {
                     font.pixelSize: 11
                 }
                 Item { Layout.fillWidth: true }
+                Button {
+                    text: "Tastatur"
+                    onClicked: keyBindingsDlg.open()
+                }
                 Button {
                     text: "Audio-Einstellungen"
                     onClicked: audioDialog.open()

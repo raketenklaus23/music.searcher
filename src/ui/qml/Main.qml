@@ -215,89 +215,97 @@ ApplicationWindow {
             }
         }
 
-        // === DECK ZONE (adaptiv: 2- oder 4-Deck) ===
+        // === HAUPT-SPLIT: Decks (oben) vs Library+Suggester (unten) ===
         property bool fourDeck: backend.player.fourDeckMode
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: fourDeck ? 780 : 520
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 10
-
-                Deck {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    deckModel: backend.player.deckA
-                    deckId: "a"
-                    sideLabel: "A"
-                    neon: root.neon
-                }
-                Mixer {
-                    Layout.preferredWidth: 340
-                    Layout.fillHeight: true
-                }
-                Deck {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    deckModel: backend.player.deckB
-                    deckId: "b"
-                    sideLabel: "B"
-                    neon: root.neonAmber
-                }
-            }
-
-            // Zweite Reihe nur bei 4-Deck-Modus
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 10
-                visible: fourDeck
-
-                Deck {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    deckModel: backend.player.deckC
-                    deckId: "c"
-                    sideLabel: "C"
-                    neon: "#a78bfa"
-                }
-                Rectangle {
-                    Layout.preferredWidth: 340
-                    Layout.fillHeight: true
-                    color: "transparent"
-                }
-                Deck {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    deckModel: backend.player.deckD
-                    deckId: "d"
-                    sideLabel: "D"
-                    neon: "#4ade80"
-                }
-            }
-        }
-
-        // === LIBRARY + SUGGESTER ===
-        RowLayout {
+        SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 10
+            orientation: Qt.Vertical
 
-            LibraryPanel {
-                id: libraryPanel
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                onRequestSimilar: (id, name) => similarDlg.openFor(id, name)
+            // --- Deck-Zone (adaptiv 2 oder 4 Decks) ---
+            ColumnLayout {
+                SplitView.fillWidth: true
+                SplitView.preferredHeight: fourDeck ? 780 : 520
+                SplitView.minimumHeight: 260
+                spacing: 8
+
+                SplitView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    orientation: Qt.Horizontal
+
+                    Deck {
+                        SplitView.fillWidth: true
+                        SplitView.minimumWidth: 320
+                        deckModel: backend.player.deckA
+                        deckId: "a"
+                        sideLabel: "A"
+                        neon: root.neon
+                    }
+                    Mixer {
+                        SplitView.preferredWidth: 340
+                        SplitView.minimumWidth: 200
+                    }
+                    Deck {
+                        SplitView.fillWidth: true
+                        SplitView.minimumWidth: 320
+                        deckModel: backend.player.deckB
+                        deckId: "b"
+                        sideLabel: "B"
+                        neon: root.neonAmber
+                    }
+                }
+
+                SplitView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: fourDeck
+                    orientation: Qt.Horizontal
+
+                    Deck {
+                        SplitView.fillWidth: true
+                        SplitView.minimumWidth: 320
+                        deckModel: backend.player.deckC
+                        deckId: "c"
+                        sideLabel: "C"
+                        neon: "#a78bfa"
+                    }
+                    Rectangle {
+                        SplitView.preferredWidth: 340
+                        SplitView.minimumWidth: 200
+                        color: "transparent"
+                    }
+                    Deck {
+                        SplitView.fillWidth: true
+                        SplitView.minimumWidth: 320
+                        deckModel: backend.player.deckD
+                        deckId: "d"
+                        sideLabel: "D"
+                        neon: "#4ade80"
+                    }
+                }
             }
 
-            SuggesterPanel {
-                id: suggesterPanel
-                Layout.preferredWidth: 520
-                Layout.fillHeight: true
+            // --- Library + Suggester (unten) ---
+            SplitView {
+                SplitView.fillWidth: true
+                SplitView.fillHeight: true
+                SplitView.minimumHeight: 160
+                orientation: Qt.Horizontal
+
+                LibraryPanel {
+                    id: libraryPanel
+                    SplitView.fillWidth: true
+                    SplitView.minimumWidth: 400
+                    onRequestSimilar: (id, name) => similarDlg.openFor(id, name)
+                }
+
+                SuggesterPanel {
+                    id: suggesterPanel
+                    SplitView.preferredWidth: 520
+                    SplitView.minimumWidth: 300
+                }
             }
         }
 

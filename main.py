@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.audio.player import Player  # noqa: E402
 from src.core.library import Library  # noqa: E402
+from src.core.stem_jobs import StemRunner  # noqa: E402
 from src.ui.actions import Actions, register_default_actions  # noqa: E402
 from src.ui.bridge import Backend  # noqa: E402
 from src.ui.deck_bridge import PlayerBridge  # noqa: E402
@@ -29,12 +30,20 @@ class AppBackend(Backend):
     """
 
     queueCountChanged = Signal()
+    stemQueueChanged = Signal()
+    stemJobFinished = Signal(int, str)      # track_id, model
 
     def __init__(self, library: Library, player: Player):
         super().__init__(library)
         self._player_bridge = PlayerBridge(player, library, self)
         self._actions = Actions(self)
         register_default_actions(self._actions, self._player_bridge)
+
+        self._stem_runner = StemRunner(library, parent=self)
+        self._player_bridge._stem_runner_ref = self._stem_runner
+        self._stem_runner.stemFinished.connect(self._on_stem_finished)
+        self._stem_runner.queueChanged.connect(self._on_stem_queue_change)
+        self._stem_queue = 0
 
         self._queue_count = 0
         self.queueChanged.connect(self._on_queue_change)
@@ -43,6 +52,30 @@ class AppBackend(Backend):
     def _on_queue_change(self, n: int) -> None:
         self._queue_count = n
         self.queueCountChanged.emit()
+
+    @Slot(int)
+    def _on_stem_queue_change(self, n: int) -> None:
+        self._stem_queue = n
+        self.stemQueueChanged.emit()
+
+    @Slot(int, str)
+    def _on_stem_finished(self, track_id: int, model: str) -> None:
+        # Falls Track auf einem Deck geladen ist → Stems dort direkt aktivieren
+        for deck_id in ("a", "b"):
+            deck = self._player_bridge.deckByIdInternal(deck_id)
+            if deck._deck.state.track_id == track_id:
+                from src.core.stems import stem_paths_from_json
+                paths = self._library.get_stems_for_model(track_id, model)
+                if paths:
+                    deck._deck.load_stems(model, paths)
+                    deck.stateChanged.emit()
+        self.stemJobFinished.emit(track_id, model)
+        # Library-Model refreshen (Stem-Icons in LibraryPanel)
+        self._model.update_track(track_id)
+
+    @Property(int, notify=stemQueueChanged)
+    def stemQueueCount(self) -> int:
+        return self._stem_queue
 
     @Property(int, notify=queueCountChanged)
     def queueCount(self) -> int:

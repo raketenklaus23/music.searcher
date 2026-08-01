@@ -32,6 +32,7 @@ from ..core.loudness import (
     normalize_destructive,
     normalize_playback_gain,
 )
+from ..core.stems import STEM_NAMES, StemModel, stem_paths_from_json
 
 _DOUBLE_PRESS_WINDOW_S = 0.32   # innerhalb dieser Zeit gilt der 2. Klick als Double-Press
 
@@ -88,6 +89,12 @@ class DeckBridge(QObject):
             return
         try:
             self._deck.load(Path(t.path), track_id=t.id, bpm=t.bpm, key=t.key)
+            # Wenn für diesen Track bereits Stems separiert sind, direkt mitladen
+            for row in self._library.get_stems_meta(t.id):
+                paths = stem_paths_from_json(row["stem_paths_json"])
+                if paths:
+                    self._deck.load_stems(row["model"], paths)
+                    break   # neueste zuerst
             self.stateChanged.emit()
         except Exception as exc:
             print(f"[Deck {self._id}] Load failed: {exc}")
@@ -481,6 +488,76 @@ class DeckBridge(QObject):
         p = self._player.sync.beat_position(self._id)
         return p[2] if p else 0
 
+    # ---- Stems (pro Deck, siehe StemPanel.qml) ---------------------
+
+    @Slot(result=bool)
+    def hasStems(self) -> bool:  # noqa: N802
+        return bool(self._deck._stem_bufs)
+
+    @Slot(result=bool)
+    def stemMode(self) -> bool:  # noqa: N802
+        return self._deck.state.stem_mode
+
+    @Slot(bool)
+    def setStemMode(self, on: bool) -> None:  # noqa: N802
+        self._deck.set_stem_mode(on)
+        self.stateChanged.emit()
+
+    @Slot(result=list)
+    def stemNames(self) -> list:  # noqa: N802
+        return list(self._deck.state.stem_names)
+
+    @Slot(str, float)
+    def setStemVolume(self, name: str, v: float) -> None:  # noqa: N802
+        self._deck.set_stem_volume(name, v)
+
+    @Slot(str, bool)
+    def setStemMuted(self, name: str, muted: bool) -> None:  # noqa: N802
+        self._deck.set_stem_muted(name, muted)
+        self.stateChanged.emit()
+
+    @Slot(str, bool)
+    def setStemSoloed(self, name: str, soloed: bool) -> None:  # noqa: N802
+        self._deck.set_stem_soloed(name, soloed)
+        self.stateChanged.emit()
+
+    @Slot(str, result=float)
+    def stemVolume(self, name: str) -> float:  # noqa: N802
+        return float(self._deck._stem_volumes.get(name, 1.0))
+
+    @Slot(str, result=bool)
+    def stemMuted(self, name: str) -> bool:  # noqa: N802
+        return bool(self._deck._stem_muted.get(name, False))
+
+    @Slot(str, result=bool)
+    def stemSoloed(self, name: str) -> bool:  # noqa: N802
+        return bool(self._deck._stem_soloed.get(name, False))
+
+    @Slot(str)
+    def separateStems(self, model: str) -> None:  # noqa: N802
+        """Startet Demucs-Separation für den aktuellen Track (nicht-blockierend)."""
+        tid = self._deck.state.track_id
+        if tid is None:
+            return
+        try:
+            m = StemModel(model)
+        except ValueError:
+            return
+        t = self._library.get_track(tid)
+        if t is None:
+            return
+        # Runner-Referenz vom Parent (PlayerBridge → Backend)
+        runner = getattr(self.parent(), "_stem_runner_ref", None)
+        if runner is None:
+            print("[Deck] Stem-Runner nicht verfügbar")
+            return
+        runner.enqueue(tid, Path(t.path), m)
+
+    @Slot()
+    def clearStems(self) -> None:  # noqa: N802
+        self._deck.unload_stems()
+        self.stateChanged.emit()
+
     def _on_tick(self) -> None:
         # Sync-Tick, damit Phase-Lock nachjustiert wird
         self._player.sync.tick()
@@ -495,6 +572,8 @@ class PlayerBridge(QObject):
     keyNotationChanged = Signal()
     quantizerChanged = Signal()
     beatgridModeChanged = Signal()
+
+    stemsChanged = Signal(int, str)          # track_id, model — Deck kann neu laden
 
     def __init__(self, player: Player, library: Library, parent=None):
         super().__init__(parent)
@@ -517,6 +596,8 @@ class PlayerBridge(QObject):
         self._deck_a = DeckBridge(player, "a", library, self._quantizer, self)
         self._deck_b = DeckBridge(player, "b", library, self._quantizer, self)
         self._key_notation = "camelot"   # oder "openkey"
+        # Stem-Runner-Referenz — wird von AppBackend gesetzt
+        self._stem_runner_ref = None
 
     # ---- Deck-Zugriff für QML ----
 

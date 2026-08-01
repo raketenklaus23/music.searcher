@@ -446,5 +446,13 @@ Rectangle {
                 font.pixelSize: 10
             }
         }
+
+        // === Stem Panel ===
+        StemPanel {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 140
+            deckModel: deck.deckModel
+            deckColor: deck.neon
+        }
     }
 }

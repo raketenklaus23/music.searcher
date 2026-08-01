@@ -208,7 +208,7 @@ ApplicationWindow {
         // === DECK ZONE ===
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 360
+            Layout.preferredHeight: 520
             spacing: 10
 
             Deck {
@@ -257,7 +257,10 @@ ApplicationWindow {
                 anchors.rightMargin: 12
 
                 Text {
-                    text: "Jobs in Queue: " + backend.queueCount
+                    text: "Jobs: " + backend.queueCount
+                          + (backend.stemQueueCount > 0
+                             ? " · Stems: " + backend.stemQueueCount
+                             : "")
                     color: root.textDim
                     font.pixelSize: 11
                 }

@@ -47,6 +47,9 @@ class DeckState:
     pitch_semitones: float = 0.0        # zusätzliche Key-Match-Verschiebung
     gain_db: float = 0.0
     volume: float = 1.0                 # channel fader 0..1
+    stem_mode: bool = False             # True → Stems statt Haupt-Buffer mixen
+    stem_model: Optional[str] = None    # htdemucs | htdemucs_6s
+    stem_names: list = field(default_factory=list)  # z. B. ['drums','bass','other','vocals']
 
 
 class Deck:
@@ -62,6 +65,11 @@ class Deck:
         self._lock = threading.Lock()
         # Pedalboard PitchShift für KeyLock — created per load
         self._pitchshift = None
+        # Stem-Playback: gleich lange Buffer pro Stem, plus Vol/Mute/Solo
+        self._stem_bufs: dict[str, np.ndarray] = {}
+        self._stem_volumes: dict[str, float] = {}
+        self._stem_muted: dict[str, bool] = {}
+        self._stem_soloed: dict[str, bool] = {}
 
     # ---- Load & Params ------------------------------------------------
 
@@ -98,7 +106,76 @@ class Deck:
         with self._lock:
             self._buf = None
             self._buf_len = 0
+            self._stem_bufs.clear()
+            self._stem_volumes.clear()
+            self._stem_muted.clear()
+            self._stem_soloed.clear()
             self._state = DeckState(engine_sr=self.engine_sr)
+
+    # ---- Stems -------------------------------------------------------
+
+    def load_stems(self, model: str, stem_paths: dict[str, str]) -> None:
+        """Lädt Stem-WAVs, resamplet, stereoisiert und aktiviert Stem-Mode.
+        Alle Stems müssen dieselbe Länge haben (Demucs-Konvention).
+        """
+        loaded: dict[str, np.ndarray] = {}
+        max_len = 0
+        for name, path in stem_paths.items():
+            try:
+                data, sr = sf.read(str(path), dtype="float32", always_2d=True)
+            except Exception:
+                continue
+            if data.shape[1] == 1:
+                data = np.repeat(data, 2, axis=1)
+            elif data.shape[1] > 2:
+                data = data[:, :2]
+            if sr != self.engine_sr:
+                data = _resample_linear(data, sr, self.engine_sr)
+            loaded[name] = np.ascontiguousarray(data, dtype=np.float32)
+            max_len = max(max_len, loaded[name].shape[0])
+        if not loaded:
+            return
+        # gleiche Länge sicherstellen (padding, falls Demucs leicht abweicht)
+        for name, arr in list(loaded.items()):
+            if arr.shape[0] < max_len:
+                pad = np.zeros((max_len - arr.shape[0], 2), dtype=np.float32)
+                loaded[name] = np.vstack([arr, pad])
+        with self._lock:
+            self._stem_bufs = loaded
+            self._stem_volumes = {n: 1.0 for n in loaded}
+            self._stem_muted = {n: False for n in loaded}
+            self._stem_soloed = {n: False for n in loaded}
+            self._state.stem_mode = True
+            self._state.stem_model = model
+            self._state.stem_names = list(loaded.keys())
+
+    def unload_stems(self) -> None:
+        with self._lock:
+            self._stem_bufs.clear()
+            self._stem_volumes.clear()
+            self._stem_muted.clear()
+            self._stem_soloed.clear()
+            self._state.stem_mode = False
+            self._state.stem_model = None
+            self._state.stem_names = []
+
+    def set_stem_mode(self, on: bool) -> None:
+        with self._lock:
+            if on and not self._stem_bufs:
+                return
+            self._state.stem_mode = bool(on)
+
+    def set_stem_volume(self, stem: str, v: float) -> None:
+        if stem in self._stem_volumes:
+            self._stem_volumes[stem] = float(np.clip(v, 0.0, 1.4))
+
+    def set_stem_muted(self, stem: str, muted: bool) -> None:
+        if stem in self._stem_muted:
+            self._stem_muted[stem] = bool(muted)
+
+    def set_stem_soloed(self, stem: str, soloed: bool) -> None:
+        if stem in self._stem_soloed:
+            self._stem_soloed[stem] = bool(soloed)
 
     @property
     def state(self) -> DeckState:
@@ -210,8 +287,26 @@ class Deck:
         i0 = idx.astype(np.int64)
         i1 = i0 + 1
         frac = (idx - i0).astype(np.float32).reshape(-1, 1)
-        # Interpolierte Samples
-        out[:] = buf[i0] * (1.0 - frac) + buf[i1] * frac
+
+        if self._state.stem_mode and self._stem_bufs:
+            # Solo-Logik: wenn eines auf solo, andere stumm
+            any_solo = any(self._stem_soloed.values())
+            mix = np.zeros_like(out)
+            for name, sbuf in self._stem_bufs.items():
+                if self._stem_muted.get(name):
+                    continue
+                if any_solo and not self._stem_soloed.get(name):
+                    continue
+                if sbuf.shape[0] <= i1[-1]:
+                    continue
+                vol = self._stem_volumes.get(name, 1.0)
+                if vol <= 0.0:
+                    continue
+                mix += (sbuf[i0] * (1.0 - frac) + sbuf[i1] * frac) * np.float32(vol)
+            out[:] = mix
+        else:
+            # Interpolierte Samples (Standard)
+            out[:] = buf[i0] * (1.0 - frac) + buf[i1] * frac
 
         # Playhead vorschieben
         new_pos = pos + frames * ratio

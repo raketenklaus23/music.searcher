@@ -116,3 +116,14 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Online-Cache fuer MusicBrainz / Discogs Lookups (Phase 5)
+CREATE TABLE IF NOT EXISTS online_cache (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    source     TEXT NOT NULL,            -- musicbrainz | discogs
+    lookup_key TEXT NOT NULL,            -- z.B. "artist|title" oder MBID
+    payload    TEXT NOT NULL,            -- JSON-Antwort
+    fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source, lookup_key)
+);
+CREATE INDEX IF NOT EXISTS idx_online_cache_source ON online_cache(source);

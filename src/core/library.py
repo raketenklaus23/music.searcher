@@ -43,6 +43,7 @@ class Track:
     bpm: Optional[float]
     key: Optional[str]
     lufs: Optional[float]
+    energy: Optional[float]
     status: str
 
     @classmethod
@@ -59,6 +60,7 @@ class Track:
             bpm=row["bpm"],
             key=row["key"],
             lufs=row["lufs"],
+            energy=row["energy"] if "energy" in row.keys() else None,
             status=row["status"],
         )
 

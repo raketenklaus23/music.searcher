@@ -237,11 +237,28 @@ ApplicationWindow {
             }
         }
 
-        // === LIBRARY ===
-        LibraryPanel {
-            id: libraryPanel
+        // === LIBRARY + SUGGESTER ===
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: 10
+
+            LibraryPanel {
+                id: libraryPanel
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                onRequestSimilar: (id, name) => similarDlg.openFor(id, name)
+            }
+
+            SuggesterPanel {
+                id: suggesterPanel
+                Layout.preferredWidth: 520
+                Layout.fillHeight: true
+            }
+        }
+
+        SimilarTracksDialog {
+            id: similarDlg
         }
 
         // === BOTTOM BAR ===
@@ -281,7 +298,7 @@ ApplicationWindow {
                     onClicked: audioDialog.open()
                 }
                 Text {
-                    text: "Phase 2 · Decks + Mixer"
+                    text: "Phase 5 · Suggester + Set-Drop"
                     color: root.neonPink
                     font.pixelSize: 11
                     font.letterSpacing: 2

@@ -9,6 +9,8 @@ Rectangle {
     border.width: 1
     border.color: Qt.rgba(1, 1, 1, 0.05)
 
+    signal requestSimilar(int trackId, string title)
+
     property color neon:    "#00e0ff"
     property color textCol: "#e6f1ff"
     property color textDim: "#8899aa"
@@ -102,7 +104,11 @@ Rectangle {
                         drag.target: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
-                        onPressed: {
+                        onPressed: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                ctxMenu.popup()
+                                return
+                            }
                             row.grabToImage(function(res) {
                                 parent.Drag.imageSource = res.url
                             })
@@ -113,6 +119,22 @@ Rectangle {
                                 backend.player.deckA.loadTrack(trackId)
                             else
                                 backend.player.deckB.loadTrack(trackId)
+                        }
+
+                        Menu {
+                            id: ctxMenu
+                            MenuItem {
+                                text: "Aehnliche Tracks…"
+                                onTriggered: panel.requestSimilar(trackId, title || "Track")
+                            }
+                            MenuItem {
+                                text: "→ Deck A"
+                                onTriggered: backend.player.deckA.loadTrack(trackId)
+                            }
+                            MenuItem {
+                                text: "→ Deck B"
+                                onTriggered: backend.player.deckB.loadTrack(trackId)
+                            }
                         }
                         onEntered: {
                             if (musicalKey && musicalKey.length > 0) {

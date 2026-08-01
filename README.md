@@ -4,15 +4,15 @@ Eigenständige Musik-Verwaltung + DJ-Vorproduktion in Python. Flache Library, 2 
 
 ## Status
 
-**Phase 1 — Fundament: ✅ fertig**
+**Phasen 1–7: ✅ fertig · Phasen 8–10 laufen**
 
-- SQLite-Library (flach, keine Ordnerhierarchie)
-- Drag & Drop Import über QML
-- Basis-Analyse offline: BPM, Tonart (Camelot), LUFS, Energy — via `librosa` + `pyloudnorm`
-- Background-Job-Queue (QThreadPool), Analyse blockiert die UI nicht
-- Flashiges Dark-UI-Grundgerüst mit PySide6 + QML
-
-Nächste Phasen: Decks + Mixer (2), Analyse-Suite (3), Stems + Compression (4), Suggester + Set-Analyse (5), GUI-Polish (6).
+- Phase 1 — Library + Basis-Analyse (BPM/Key/LUFS/Energy)
+- Phase 2 — Decks + Mixer + Sync/Key-Match
+- Phase 3 — Beatgrid + Quantizer + Vocals + Auto-Cues/Loops + LUFS-Normalize
+- Phase 4 — Demucs-Stems + Deck-Playback + A10-Compressor + Save-Pushed
+- Phase 5 — Vibe-Suggester + Set-Fingerprint + MusicBrainz/Discogs
+- Phase 6 — Waveform-Canvas + Vocal-Overlay + Beat-Ticks + Animationen
+- Phase 7 — Editierbare Keyboard-Shortcuts (17 Actions)
 
 ## Start
 
@@ -53,9 +53,25 @@ music.searcher/
 
 ## Roadmap
 
-- [x] Phase 1 — Fundament
-- [ ] Phase 2 — Decks + Mixer (Sync, Crossfader, 4-Band-EQ, Key-Match)
-- [ ] Phase 3 — Auto-Cues (8) + Auto-Loops (8) + LUFS-Normalisierung
-- [ ] Phase 4 — Offline-Stems (Demucs) + Pioneer-A10-Compression + Save-Pushed
-- [ ] Phase 5 — DJ-Set-Analyse (60 min → Playlist), Similar-Tracks-Fenster (Jahr+Künstler)
-- [ ] Phase 6 — Shader-Polish, physikalische Knobs, Beat-Sync-Animationen
+- [x] Phase 1 — Fundament (Library + Basis-Analyse)
+- [x] Phase 2 — Decks + Mixer (Sync, Crossfader, 4-Band-EQ, Key-Match)
+- [x] Phase 3 — Auto-Cues (8) + Auto-Loops (8) + LUFS-Normalisierung
+- [x] Phase 4 — Offline-Stems (Demucs) + Pioneer-A10-Compression + Save-Pushed
+- [x] Phase 5 — DJ-Set-Analyse + Similar-Tracks + Online-Lookup
+- [x] Phase 6 — Waveform-Shader, Vocal-Overlay, Beat-Ticks, Animationen
+- [x] Phase 7 — Editierbare Keyboard-Shortcuts
+- [ ] Phase 8 — Standalone-Build (Windows .exe + macOS .app via PyInstaller)
+- [ ] Phase 9 — MIDI-Controller-Mapping (Denon SC Live 4)
+- [ ] Phase 10 — 4-Deck-Option (adaptives Layout)
+
+## Standalone-Build
+
+```bash
+pip install pyinstaller
+# Windows:
+scripts\build_windows.bat
+# macOS:
+./scripts/build_macos.sh
+```
+
+Ergebnis: `dist/MusicSearcher/MusicSearcher.exe` bzw. `dist/MusicSearcher.app`.

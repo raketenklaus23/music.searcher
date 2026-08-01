@@ -17,9 +17,14 @@ pedalboard>=0.9.0
 # demucs>=4.0.1
 # torch>=2.2
 
-# === Phase 5: Online Lookup (optional) ===
-# musicbrainzngs>=0.7.1
-# python3-discogs-client>=2.7
+# === Phase 5: Online Lookup ===
+# reine stdlib (urllib) — kein extra Paket noetig
 
 # === Phase 3: Struktur/Segmente (optional, msaf ist zickig unter Windows) ===
 # msaf ist optional; librosa reicht für Basis-Segmentation
+
+# === Phase 8: Standalone-Build ===
+# pyinstaller>=6.0
+
+# === Phase 9: MIDI (spaeter) ===
+# python-rtmidi>=1.5
